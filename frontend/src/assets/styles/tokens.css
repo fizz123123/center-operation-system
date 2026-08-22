@@ -1,0 +1,114 @@
+/**
+ * 設計 Token（設計系統的最小單位）
+ * 所有顏色、間距、字級都集中在這裡管理，元件內不可以直接寫死色碼（hex）。
+ * 好處：老師口試問「配色怎麼決定的」時，可以直接指到這個檔案完整說明。
+ *
+ * 色票來源：小組指定的固定 8 色（見需求圖片），語意分組方式如下：
+ *   2F3E46 炭黑（最深）→ 品牌最深色，用於文字 / 側邊欄底色
+ *   354F52 深石板色      → 側邊欄、Navbar 底色
+ *   52796F 深青綠（品牌主色）→ 按鈕、連結、啟用中狀態
+ *   84A98C 鼠尾草綠      → 次要點綴、圖表第二色系（不可疊小字，對比不足）
+ *   CAD2C5 淺鼠尾草綠    → 淺色背景、Hover 底色
+ *   E07A5F 赤陶橘（暖色點綴 1）→ 警示 / 高優先權
+ *   E9C46A 芥黃（暖色點綴 2）→ 提醒 / 中優先權
+ *   FFFFFF 白             → 頁面與卡片底色
+ *
+ * 對比度是用 WCAG 相對亮度公式實際算過的（不是憑感覺選的）：
+ *   白字 on 2F3E46 = 11.06 : 1   （非常安全）
+ *   白字 on 354F52 =  8.78 : 1   （非常安全）
+ *   白字 on 52796F =  4.86 : 1   （剛好通過 AA 一般文字門檻 4.5:1）
+ *   炭黑 on CAD2C5 =  7.13 : 1   （安全）
+ *   炭黑 on E9C46A =  6.62 : 1   （安全，芥黃可以放小字）
+ *   炭黑 on 84A98C =  4.23 : 1   （只夠大字/粗體，一般小字不合格 → 鼠尾草綠只拿來做點綴，不放文字底）
+ *   白字 / 炭黑 on E07A5F 都不夠（2.95 / 3.75）→ 赤陶橘只用在圖示、左側色條、outline 徽章，不整塊當文字背景
+ */
+:root {
+  /* ---- 品牌色階（由深到淺）---- */
+  --color-brand-900: #2f3e46;   /* 炭黑：側邊欄最深底色、強調文字 */
+  --color-brand-800: #354f52;   /* 深石板：Navbar / 側邊欄底色 */
+  --color-brand-600: #52796f;   /* 深青綠：主要品牌色，按鈕/連結/啟用狀態 */
+  --color-brand-400: #84a98c;   /* 鼠尾草綠：次要點綴、圖表第二色系（避免疊小字）*/
+  --color-brand-100: #cad2c5;   /* 淺鼠尾草綠：淺底色、Hover、分隔區塊 */
+
+  /* ---- 暖色點綴（僅用於警示/狀態，不做大面積底色）---- */
+  --color-accent-warn: #e07a5f;  /* 赤陶橘：高優先權 / 危險 / 尚未開始 */
+  --color-accent-alert: #e9c46a; /* 芥黃：中優先權 / 進行中 / 提醒 */
+
+  /* ---- 中性色（頁面骨架）---- */
+  --color-white: #ffffff;
+  /* 頁面底色改用淡淡的雙色漸層（淺鼠尾草 → 白），取代原本單一灰綠平塗色，
+     視覺上會有「卡片浮在底色上」的層次感，呼應參考圖那種柔和、有深度的風格 */
+  --gradient-bg-page: linear-gradient(160deg, #eef2ec 0%, #f7f9f6 45%, #ffffff 100%);
+  --color-bg-page: #f2f5f0;      /* 純色版本備用（例如 email 版型等不支援漸層的地方）*/
+  --color-bg-surface: #ffffff;   /* 卡片、表格等「表面」底色 */
+  --color-border: #e2e8de;       /* 由 brand-100 降低飽和度得出的中性邊框色，比之前更淺、更不搶戲 */
+
+  /* ---- 文字語意色 ---- */
+  --color-text-primary: #2f3e46;      /* 一般內文，對比 11.06:1 */
+  --color-text-secondary: #52796f;    /* 次要文字／說明文字 */
+  --color-text-muted: #6b7d78;        /* 更弱的輔助文字（時間戳、備註）*/
+  --color-text-inverse: #ffffff;      /* 深色底上的文字 */
+
+  /* ---- 狀態語意色（EnrollmentStatus / Alert priority 對應）----
+     依照 docs/02_database_design.md 的列舉值對應顏色，元件一律透過語意變數取色，
+     未來如果要換色只需要改這裡，不用一個一個元件去找。 */
+  --color-status-not-started: var(--color-text-muted);
+  --color-status-in-progress: var(--color-accent-alert);
+  /* 已完成原本用 brand-600（深青綠），跟按鈕/連結是同一個顏色，容易讓「已完成」徽章被誤認成可點擊的連結。
+     改用 brand-800（深石板）：色系還是同一家族（沒有跳出固定 8 色），但夠深、跟 brand-600 明顯不同深淺，
+     文字對比 8.78:1（比 brand-600 的 4.86:1 更安全）。
+     這個色票只有 3 個顏色夠深、能拿來當小字徽章用（charcoal / slate-dark / teal-deep，見本檔開頭換算），
+     teal-deep 已經是品牌主色，slate-dark 是唯一能明顯區分開來又不失分的選擇。 */
+  --color-status-completed: var(--color-brand-800);
+  --color-priority-high: var(--color-accent-warn);
+  --color-priority-medium: var(--color-accent-alert);
+  --color-priority-low: var(--color-brand-400);
+
+  /* ---- 間距尺度（8px 節奏，符合 Material 8dp 規範）---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* ---- 字級尺度 ---- */
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 15px;
+  --font-size-md: 16px;
+  --font-size-lg: 20px;
+  --font-size-xl: 28px;
+  --font-size-2xl: 36px;         /* Dashboard 大數字用 */
+
+  /* ---- 字型 ---- */
+  --font-family-base: 'Inter', 'Noto Sans TC', -apple-system, sans-serif; /* Inter 顧英數，Noto Sans TC 顧中文 */
+  --font-family-number: 'Inter', 'Noto Sans TC', monospace;               /* 表格內數字用等寬對齊 */
+
+  /* ---- 圓角與陰影（統一尺度，避免各元件隨意寫死）----
+     第二版做了「浮動面板＋玻璃模糊」，回饋是太over、太悶（暗色側邊欄）。
+     這一版收斂：Sidebar/Navbar 改回貼齊邊緣的實色面板（不飄浮、不模糊），
+     但保留卡片本身柔和的圓角跟陰影——豐富感改由卡片內部的圖示配色/裝飾來做，而不是靠整體飄浮感。
+     radius-md/lg 後來又再收斂一次（14→12、20→16）：卡片/表格/表單的圓角原本偏圓，回饋是「不要太圓」，
+     這裡只收斂「面」的圓角，按鈕/導覽/標籤這類「膠囊」造型（radius-pill）維持不變，兩種形狀語言本來就該不同。 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;                                       /* 按鈕、導覽項目、標籤維持滿圓角 */
+  --shadow-card: 0 1px 2px rgba(47, 62, 70, 0.04), 0 12px 28px -14px rgba(47, 62, 70, 0.16);
+  --shadow-card-hover: 0 4px 10px rgba(47, 62, 70, 0.06), 0 18px 36px -14px rgba(47, 62, 70, 0.2);
+  --shadow-modal: 0 12px 32px rgba(47, 62, 70, 0.22);
+
+  /* ---- 版面 ----
+     選單併進 Navbar 了（原本獨立的側邊欄拿掉，見 AppNavbar.vue 的橫向 .nav-row），
+     版面回到單欄置中，不需要再另外留一欄側邊欄寬度。 */
+  --layout-navbar-height: 68px;                                /* Navbar 現在是「系統名稱＋頁面標題」兩行疊放，比單行版本高一點 */
+  --z-navbar: 100;
+  --z-modal: 1000;
+  --z-toast: 1100;
+
+  /* ---- 動效節奏（統一 timing，符合 motion-consistency 準則）---- */
+  --transition-fast: 150ms ease;
+  --transition-base: 220ms ease;
+}
