@@ -24,7 +24,7 @@
 ```text
 src/test/java/
 
-com.example.center
+com.centerops
 
 ├── service
 
@@ -36,6 +36,8 @@ com.example.center
 
 └── integration
 ```
+
+測試與功能程式碼在相同功能分支完成：Backend Service 與 Controller 測試屬於 `feature/backend-core`；資料結構與演算法測試屬於 `feature/algorithm-module`；跨資料庫、API 與前端的完整流程屬於 `feature/integration-testing`。
 
 
 ---
@@ -93,6 +95,10 @@ Expected:
 Duplicate Exception
 ```
 
+其他案例：
+
+- 查詢不存在的 Person 時拋出 ResourceNotFoundException
+
 
 ---
 
@@ -104,6 +110,9 @@ Duplicate Exception
 - 建立課程
 - 查詢課程
 - 重複課程代碼
+- 禁止課程將自己設為先修課程
+- 禁止先修關係形成 Cycle
+- Learning Path 必須先列出先修課程
 
 
 ---
@@ -116,6 +125,31 @@ Duplicate Exception
 - 正常註冊
 - 重複註冊
 - 狀態更新
+- 完成課程時寫入開始與完成日期
+- 禁止學習狀態倒退
+
+
+---
+
+## DashboardService
+
+
+測試：
+
+- 正確計算完成率並四捨五入至小數一位
+- Enrollment 為零時完成率回傳 0
+
+
+---
+
+## Pagination
+
+
+測試：
+
+- Person、Course、Enrollment、Alert 每頁固定 10 筆
+- 回傳 page、totalElements、totalPages、first、last metadata
+- Controller 正確傳遞 page query parameter
 
 
 ---
