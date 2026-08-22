@@ -10,8 +10,7 @@ CHARACTER SET utf8mb4
 COLLATE utf8mb4_unicode_ci;
 
 
-USE
-center_operation;
+USE center_operation;
 
 
 -- =============================================
@@ -43,11 +42,6 @@ CREATE TABLE persons
 );
 
 
-CREATE INDEX idx_person_email
-    ON persons (email);
-
-
-
 -- =============================================
 -- 2. Course Table
 -- 課程資料
@@ -70,11 +64,6 @@ CREATE TABLE courses
 
 
 );
-
-
-CREATE INDEX idx_course_code
-    ON courses (code);
-
 
 
 -- =============================================
