@@ -167,7 +167,7 @@ Example:
 public interface CourseService {
 
 
-List<CourseResponse> getCourses();
+PageResponse<CourseResponse> getCourses(int page);
 
 
 CourseResponse createCourse(

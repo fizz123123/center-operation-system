@@ -10,8 +10,7 @@ CHARACTER SET utf8mb4
 COLLATE utf8mb4_unicode_ci;
 
 
-USE
-center_operation;
+USE center_operation;
 
 
 -- =============================================

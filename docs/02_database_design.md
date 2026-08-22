@@ -362,11 +362,11 @@ COMPLETED
 
 | Data | Count |
 |-|-:|
-| Person | 10 |
-| Course | 10 |
-| Enrollment | 25 |
+| Person | 200 |
+| Course | 20 |
+| Enrollment | 1000 |
 | Course Prerequisite | 7 |
-| Alert | 6 |
+| Alert | 30 |
 
 此資料量足以展示人員與課程查詢、註冊狀態、Dashboard 統計、Course Graph 與 Alert Priority Queue。
 
