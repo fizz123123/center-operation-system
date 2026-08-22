@@ -63,6 +63,8 @@ erDiagram
         varchar status
         date start_date
         date complete_date
+        datetime created_at
+        datetime updated_at
     }
 
 
@@ -70,6 +72,7 @@ erDiagram
         bigint id PK
         bigint course_id FK
         bigint prerequisite_id FK
+        datetime created_at
     }
 
 
@@ -79,6 +82,8 @@ erDiagram
         bigint course_id FK
         int priority
         varchar message
+        boolean is_resolved
+        datetime created_at
     }
 
 ```
@@ -88,7 +93,7 @@ erDiagram
 # 3. Table Specification
 
 
-# PERSON
+# persons
 
 用途：
 
@@ -99,16 +104,16 @@ erDiagram
 |-|-|-|
 | id | BIGINT | PK |
 | name | VARCHAR(50) | NOT NULL |
-| email | VARCHAR(100) | UNIQUE |
+| email | VARCHAR(100) | UNIQUE, NOT NULL |
 | phone | VARCHAR(20) | |
-| status | VARCHAR(20) | |
-| created_at | DATETIME | |
-| updated_at | DATETIME | |
+| status | VARCHAR(20) | NOT NULL, DEFAULT ACTIVE |
+| created_at | DATETIME | NOT NULL |
+| updated_at | DATETIME | NOT NULL |
 
 
 ---
 
-# COURSE
+# courses
 
 用途：
 
@@ -118,16 +123,16 @@ erDiagram
 | Column | Type | Constraint |
 |-|-|-|
 | id | BIGINT | PK |
-| code | VARCHAR(50) | UNIQUE |
+| code | VARCHAR(50) | UNIQUE, NOT NULL |
 | name | VARCHAR(100) | NOT NULL |
 | description | TEXT | |
-| created_at | DATETIME | |
-| updated_at | DATETIME | |
+| created_at | DATETIME | NOT NULL |
+| updated_at | DATETIME | NOT NULL |
 
 
 ---
 
-# ENROLLMENT
+# enrollments
 
 用途：
 
@@ -146,16 +151,23 @@ Course 1 : N Enrollment
 | Column | Type | Constraint |
 |-|-|-|
 | id | BIGINT | PK |
-| person_id | BIGINT | FK |
-| course_id | BIGINT | FK |
-| status | VARCHAR(30) | |
+| person_id | BIGINT | FK, NOT NULL |
+| course_id | BIGINT | FK, NOT NULL |
+| status | VARCHAR(30) | NOT NULL, DEFAULT NOT_STARTED |
 | start_date | DATE | |
 | complete_date | DATE | |
+| created_at | DATETIME | NOT NULL |
+| updated_at | DATETIME | NOT NULL |
+
+Constraints:
+
+- `UNIQUE(person_id, course_id)`：避免同一學員重複註冊同一課程
+- 刪除 Person 或 Course 時，相關 Enrollment 一併刪除
 
 
 ---
 
-# COURSE_PREREQUISITE
+# course_prerequisites
 
 用途：
 
@@ -173,29 +185,40 @@ Data Structure
 ```
 
 
-| Column | Type |
-|-|-|
-| id | BIGINT |
-| course_id | BIGINT |
-| prerequisite_id | BIGINT |
+| Column | Type | Constraint |
+|-|-|-|
+| id | BIGINT | PK |
+| course_id | BIGINT | FK, NOT NULL |
+| prerequisite_id | BIGINT | FK, NOT NULL |
+| created_at | DATETIME | NOT NULL |
+
+Constraints:
+
+- `UNIQUE(course_id, prerequisite_id)`：避免重複先修關係
+- `course_id <> prerequisite_id`：禁止課程將自己設為先修課程
+- 刪除 Course 時，相關先修關係一併刪除
 
 
 ---
 
-# ALERT
+# alerts
 
 用途：
 
 保存課程警示。
 
 
-| Column | Type |
-|-|-|
-| id | BIGINT |
-| person_id | BIGINT |
-| course_id | BIGINT |
-| priority | INT |
-| message | VARCHAR(255) |
+| Column | Type | Constraint |
+|-|-|-|
+| id | BIGINT | PK |
+| person_id | BIGINT | FK, NOT NULL |
+| course_id | BIGINT | FK, nullable |
+| priority | INT | NOT NULL, 1–3 |
+| message | VARCHAR(255) | NOT NULL |
+| is_resolved | BOOLEAN | NOT NULL, DEFAULT FALSE |
+| created_at | DATETIME | NOT NULL |
+
+刪除 Person 時相關 Alert 一併刪除；刪除 Course 時保留 Alert，並將 `course_id` 設為 `NULL`。
 
 
 ---
@@ -203,40 +226,52 @@ Data Structure
 # 4. JPA Relationship Design
 
 
-## Person
-
-```java
-@OneToMany(
-mappedBy = "person"
-)
-private List<Enrollment> enrollments;
-```
-
-
----
-
 ## Enrollment
 
 ```java
-@ManyToOne
+@ManyToOne(fetch = FetchType.LAZY, optional = false)
+@JoinColumn(name = "person_id", nullable = false)
 private Person person;
 
-
-@ManyToOne
+@ManyToOne(fetch = FetchType.LAZY, optional = false)
+@JoinColumn(name = "course_id", nullable = false)
 private Course course;
 ```
 
 
 ---
 
-## Course
+## CoursePrerequisite
 
 ```java
-@OneToMany(
-mappedBy = "course"
-)
-private List<Enrollment> enrollments;
+@ManyToOne(fetch = FetchType.LAZY, optional = false)
+@JoinColumn(name = "course_id", nullable = false)
+private Course course;
+
+@ManyToOne(fetch = FetchType.LAZY, optional = false)
+@JoinColumn(name = "prerequisite_id", nullable = false)
+private Course prerequisite;
 ```
+
+
+---
+
+## Alert
+
+```java
+@ManyToOne(fetch = FetchType.LAZY, optional = false)
+@JoinColumn(name = "person_id", nullable = false)
+private Person person;
+
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "course_id")
+private Course course;
+```
+
+
+---
+
+為控制 MVP 複雜度，Person 與 Course 不建立反向 `@OneToMany` 集合。關聯資料由 Repository 查詢，避免不必要的雙向關聯、循環參照與意外載入大量資料。
 
 
 ---
@@ -271,47 +306,18 @@ COMPLETED
 # 6. Index Design
 
 
-## Person Email Index
+`persons.email` 與 `courses.code` 的 `UNIQUE` 約束已建立唯一索引，不另外建立重複索引。
 
-用途：
+其餘索引：
 
-快速查詢使用者。
-
-
-```sql
-CREATE INDEX idx_person_email
-ON person(email);
-```
-
-
----
-
-## Course Code Index
-
-用途：
-
-快速查詢課程代碼。
-
-
-```sql
-CREATE INDEX idx_course_code
-ON course(code);
-```
-
-
----
-
-## Enrollment Person Index
-
-用途：
-
-查詢個人學習紀錄。
-
-
-```sql
-CREATE INDEX idx_enrollment_person
-ON enrollment(person_id);
-```
+| Index | Column | Purpose |
+|-|-|-|
+| idx_enrollment_person | enrollments.person_id | 查詢學員學習紀錄 |
+| idx_enrollment_course | enrollments.course_id | 查詢課程註冊紀錄 |
+| idx_cp_course | course_prerequisites.course_id | 查詢課程先修需求 |
+| idx_cp_prerequisite | course_prerequisites.prerequisite_id | 建立先修課程 Graph |
+| idx_alert_priority | alerts.priority | 依警示優先級排序 |
+| idx_alert_person | alerts.person_id | 查詢學員警示 |
 
 
 ---
@@ -349,24 +355,20 @@ ON enrollment(person_id);
 
 ---
 
-# 8. Sample Data 規劃
+# 8. Demo Sample Data
 
 
-開發測試資料：
+目前 `database/sample_data.sql` 提供：
 
-## Person
+| Data | Count |
+|-|-:|
+| Person | 200 |
+| Course | 20 |
+| Enrollment | 1000 |
+| Course Prerequisite | 7 |
+| Alert | 30 |
 
-50 筆以上
-
-
-## Course
-
-10~20 筆
-
-
-## Enrollment
-
-100 筆以上
+此資料量足以展示人員與課程查詢、註冊狀態、Dashboard 統計、Course Graph 與 Alert Priority Queue。
 
 
 ## Graph Data
@@ -384,7 +386,7 @@ Algorithm
 ```
 
 
-異常：
+Cycle Detection 的負向測試情境：
 
 ```text
 A
@@ -396,4 +398,18 @@ C
 A
 ```
 
-用於測試 Cycle Detection。
+循環資料不寫入正式 Sample Data，由 Service 測試建立並確認系統拒絕該關係。
+
+
+---
+
+# 9. Normalization and MVP Decision
+
+目前 schema 符合 MVP 所需的第三正規化（3NF）：
+
+- Person 與 Course 各自保存單一主題資料
+- 多對多的註冊關係拆分為 enrollments，進度狀態與日期依附於 Enrollment
+- 課程先修關係拆分為 course_prerequisites，支援一門課有多個先修課程
+- Alert 作為事件快照保存 priority 與 message，適合 Demo 排序與通知展示
+
+MVP 不加入權限、分類、稽核歷程或額外統計資料表，分析結果由 Service 即時計算，避免過度設計。

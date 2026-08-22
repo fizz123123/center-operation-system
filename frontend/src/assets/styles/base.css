@@ -1,0 +1,70 @@
+@import './tokens.css';                                 /* 先載入設計 token，後面才能直接用 var(--xxx) */
+
+/* ---- CSS Reset（精簡版，夠用就好，不用整包 normalize.css）---- */
+*, *::before, *::after {
+  box-sizing: border-box;                                /* 讓 padding/border 不會撐大元素寬高，排版比較好算 */
+}
+
+html, body, #app {
+  height: 100%;                                          /* 讓側邊欄可以用 100% 高度撐滿畫面 */
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  line-height: 1.6;                                      /* 行高 1.5~1.75 之間，中文閱讀舒適 */
+  color: var(--color-text-primary);
+  background: var(--gradient-bg-page);                      /* 柔和雙色漸層，讓卡片浮在底色上時更有層次，不會整片死板灰綠 */
+  background-attachment: fixed;                              /* 捲動內容時漸層固定不跟著捲，卡片才像是「浮在」背景上 */
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  margin: 0 0 var(--space-3) 0;
+  font-weight: 700;                                      /* 標題統一用 700，內文用 400/500，做出層級感 */
+  color: var(--color-text-primary);
+}
+
+p { margin: 0 0 var(--space-3) 0; }
+
+ul, ol { margin: 0; padding: 0; list-style: none; }       /* 選單/清單元件會各自決定要不要項目符號 */
+
+a {
+  color: var(--color-brand-600);
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+button, input, select, textarea {
+  font: inherit;                                          /* 表單元件預設不繼承字型，這裡強制繼承，維持視覺一致 */
+  color: inherit;
+}
+
+button {
+  cursor: pointer;                                        /* 所有可點擊元素都要有 pointer 游標 */
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;                                           /* disabled 狀態統一用透明度表示，符合 disabled-states 準則 */
+}
+
+/* ---- 全域可見的鍵盤 focus 樣式（不可以拿掉，鍵盤操作者需要看到目前焦點在哪）---- */
+:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+}
+
+/* ---- 表格數字統一用等寬字型，避免直排數字左右晃動 ---- */
+.num {
+  font-family: var(--font-family-number);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 尊重使用者「減少動態效果」的系統設定 ---- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

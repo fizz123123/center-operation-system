@@ -66,6 +66,33 @@ return Entity;
 ```
 
 
+## Pagination Rules
+
+人員、課程、修課紀錄與警示清單採用分頁查詢：
+
+```http
+GET /api/{resource}?page=0
+```
+
+- `page` 從 0 開始，未提供時預設為 0
+- 每頁固定 10 筆，不開放前端修改 page size
+- 負數 page 回傳 `400 BAD REQUEST`
+
+共同回應格式：
+
+```json
+{
+  "content": [],
+  "page": 0,
+  "size": 10,
+  "totalElements": 200,
+  "totalPages": 20,
+  "first": true,
+  "last": false
+}
+```
+
+
 ---
 
 # 3. Person API
@@ -77,22 +104,30 @@ return Entity;
 ### Request
 
 ```http
-GET /api/people
+GET /api/people?page=0
 ```
 
 
 ### Response
 
 ```json
-[
-  {
+{
+  "content": [
+    {
     "id":1,
     "name":"Brian",
     "email":"test@example.com",
     "phone":"0912345678",
     "status":"ACTIVE"
-  }
-]
+    }
+  ],
+  "page":0,
+  "size":10,
+  "totalElements":200,
+  "totalPages":20,
+  "first":true,
+  "last":false
+}
 ```
 
 
@@ -236,20 +271,28 @@ Status:
 Request:
 
 ```http
-GET /api/courses
+GET /api/courses?page=0
 ```
 
 
 Response:
 
 ```json
-[
- {
-  "id":1,
-  "code":"JAVA01",
-  "name":"Java Basic"
- }
-]
+{
+  "content": [
+    {
+      "id":1,
+      "code":"JAVA01",
+      "name":"Java Basic"
+    }
+  ],
+  "page":0,
+  "size":10,
+  "totalElements":20,
+  "totalPages":2,
+  "first":true,
+  "last":false
+}
 ```
 
 
@@ -355,31 +398,54 @@ Course 2
 # 5. Enrollment API
 
 
-## 5.1 查詢學員學習紀錄
+## 5.1 查詢全部修課紀錄
 
 
 Request:
 
 ```http
-GET /api/people/{personId}/enrollments
+GET /api/enrollments?page=0
+```
+
+Response 使用共同分頁格式，`content` 為 `EnrollmentResponse`。
+
+
+---
+
+
+## 5.2 查詢學員學習紀錄
+
+
+Request:
+
+```http
+GET /api/people/{personId}/enrollments?page=0
 ```
 
 
 Response:
 
 ```json
-[
- {
-  "courseName":"Java Basic",
-  "status":"COMPLETED"
- }
-]
+{
+  "content": [
+    {
+      "courseName":"Java Basic",
+      "status":"COMPLETED"
+    }
+  ],
+  "page":0,
+  "size":10,
+  "totalElements":3,
+  "totalPages":1,
+  "first":true,
+  "last":true
+}
 ```
 
 
 ---
 
-## 5.2 註冊課程
+## 5.3 註冊課程
 
 
 Request:
@@ -418,7 +484,7 @@ Status:
 
 ---
 
-## 5.3 更新學習狀態
+## 5.4 更新學習狀態
 
 
 Request:
@@ -456,10 +522,10 @@ Response:
 
 ```json
 {
-"totalPeople":50,
-"totalCourses":15,
-"totalEnrollments":200,
-"completionRate":75.5
+"totalPeople":200,
+"totalCourses":20,
+"totalEnrollments":1000,
+"completionRate":45.0
 }
 ```
 
@@ -510,20 +576,29 @@ Response:
 Request:
 
 ```http
-GET /api/alerts
+GET /api/alerts?page=0
 ```
 
 
 Response:
 
 ```json
-[
 {
-"id":1,
-"priority":3,
-"message":"Course unfinished"
+  "content": [
+    {
+      "id":1,
+      "priority":3,
+      "message":"Course unfinished",
+      "resolved":false
+    }
+  ],
+  "page":0,
+  "size":10,
+  "totalElements":30,
+  "totalPages":3,
+  "first":true,
+  "last":false
 }
-]
 ```
 
 
@@ -536,6 +611,14 @@ Priority:
 
 1 LOW
 ```
+
+目前 Priority 是 Alert 建立時保存的分類值，Backend 依 `priority DESC, created_at ASC` 查詢：
+
+- `3 HIGH`：需立即處理
+- `2 MEDIUM`：需要追蹤
+- `1 LOW`：一般提醒
+
+目前 MVP 尚未根據期限自動計算 Priority；若後續加入 Alert Generator，應由業務規則產生 priority，再交由自訂 MaxHeap 展示優先排程。
 
 
 ---
