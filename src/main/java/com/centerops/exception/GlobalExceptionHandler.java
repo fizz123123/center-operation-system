@@ -24,14 +24,18 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, exception.getMessage(), request, Map.of());
     }
 
-    @ExceptionHandler({DuplicateResourceException.class, DataIntegrityViolationException.class})
+    @ExceptionHandler({
+            DuplicateResourceException.class,
+            BusinessConflictException.class,
+            DataIntegrityViolationException.class
+    })
     public ResponseEntity<ApiErrorResponse> handleConflict(
             RuntimeException exception,
             HttpServletRequest request
     ) {
-        String message = exception instanceof DuplicateResourceException
-                ? exception.getMessage()
-                : "The request conflicts with existing data";
+        String message = exception instanceof DataIntegrityViolationException
+                ? "The request conflicts with existing data"
+                : exception.getMessage();
         return build(HttpStatus.CONFLICT, message, request, Map.of());
     }
 
