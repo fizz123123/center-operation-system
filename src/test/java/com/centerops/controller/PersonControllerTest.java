@@ -3,6 +3,7 @@ package com.centerops.controller;
 import com.centerops.dto.request.PersonCreateRequest;
 import com.centerops.dto.response.PersonResponse;
 import com.centerops.dto.response.PageResponse;
+import com.centerops.dto.response.PersonStatisticsResponse;
 import com.centerops.entity.PersonStatus;
 import com.centerops.exception.GlobalExceptionHandler;
 import com.centerops.exception.ResourceNotFoundException;
@@ -18,6 +19,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -84,15 +86,31 @@ class PersonControllerTest {
                 false,
                 true
         );
-        when(personService.getAll(2)).thenReturn(response);
+        when(personService.getAll(2, "Ada", PersonStatus.ACTIVE)).thenReturn(response);
 
-        mockMvc.perform(get("/api/people").param("page", "2"))
+        mockMvc.perform(get("/api/people")
+                        .param("page", "2")
+                        .param("search", "Ada")
+                        .param("status", "ACTIVE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].id").value(21))
                 .andExpect(jsonPath("$.page").value(2))
                 .andExpect(jsonPath("$.size").value(10))
                 .andExpect(jsonPath("$.totalElements").value(25))
                 .andExpect(jsonPath("$.last").value(true));
+
+        verify(personService).getAll(2, "Ada", PersonStatus.ACTIVE);
+    }
+
+    @Test
+    void getStatisticsShouldReturnGlobalCounts() throws Exception {
+        when(personService.getStatistics()).thenReturn(new PersonStatisticsResponse(200, 180, 20));
+
+        mockMvc.perform(get("/api/people/statistics"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(200))
+                .andExpect(jsonPath("$.active").value(180))
+                .andExpect(jsonPath("$.inactive").value(20));
     }
 
     @Test

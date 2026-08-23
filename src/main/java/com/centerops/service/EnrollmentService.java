@@ -6,9 +6,9 @@ import com.centerops.dto.response.EnrollmentResponse;
 import com.centerops.dto.response.PageResponse;
 
 public interface EnrollmentService {
-    PageResponse<EnrollmentResponse> getAll(int page);
+    PageResponse<EnrollmentResponse> getAll(int page, String sort, String direction);
 
-    PageResponse<EnrollmentResponse> getByPersonId(Long personId, int page);
+    PageResponse<EnrollmentResponse> getByPersonId(Long personId, int page, String sort, String direction);
 
     EnrollmentResponse create(EnrollmentCreateRequest request);
 

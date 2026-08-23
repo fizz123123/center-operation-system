@@ -20,15 +20,20 @@ public class AlertServiceImpl implements AlertService {
     private final AlertMapper alertMapper;
 
     @Override
-    public PageResponse<AlertResponse> getAllByPriority(int page) {
+    public PageResponse<AlertResponse> getAllByPriority(int page, Integer priority) {
         if (page < 0) {
             throw new InvalidStateException("Page index must be zero or greater");
         }
+        if (priority != null && (priority < 1 || priority > 3)) {
+            throw new InvalidStateException("priority must be between 1 and 3");
+        }
+
+        PageRequest pageRequest = PageRequest.of(page, PageResponse.DEFAULT_SIZE);
+        var alerts = priority == null
+                ? alertRepository.findAllByOrderByPriorityDescCreatedAtAscIdAsc(pageRequest)
+                : alertRepository.findAllByPriorityOrderByCreatedAtAscIdAsc(priority, pageRequest);
         return PageResponse.from(
-                alertRepository.findAllByOrderByPriorityDescCreatedAtAsc(
-                                PageRequest.of(page, PageResponse.DEFAULT_SIZE)
-                        )
-                        .map(alertMapper::toResponse)
+                alerts.map(alertMapper::toResponse)
         );
     }
 }
