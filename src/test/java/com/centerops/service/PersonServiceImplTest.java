@@ -2,6 +2,7 @@ package com.centerops.service;
 
 import com.centerops.dto.request.PersonCreateRequest;
 import com.centerops.dto.response.PersonResponse;
+import com.centerops.dto.response.PersonStatisticsResponse;
 import com.centerops.entity.Person;
 import com.centerops.entity.PersonStatus;
 import com.centerops.exception.DuplicateResourceException;
@@ -25,6 +26,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 
 @ExtendWith(MockitoExtension.class)
 class PersonServiceImplTest {
@@ -47,21 +50,43 @@ class PersonServiceImplTest {
                 .status(PersonStatus.ACTIVE)
                 .build();
         PersonResponse mapped = new PersonResponse(1L, "Ada", "ada@example.com", null, PersonStatus.ACTIVE);
-        when(personRepository.findAll(org.mockito.ArgumentMatchers.any(Pageable.class)))
+        when(personRepository.findAllBySearchAndStatus(eq(null), eq(null), any(Pageable.class)))
                 .thenAnswer(invocation -> new PageImpl<>(
                         List.of(person),
-                        invocation.getArgument(0),
+                        invocation.getArgument(2),
                         21
                 ));
         when(personMapper.toResponse(person)).thenReturn(mapped);
 
-        var response = personService.getAll(1);
+        var response = personService.getAll(1, null, null);
 
         assertThat(response.content()).containsExactly(mapped);
         assertThat(response.page()).isEqualTo(1);
         assertThat(response.size()).isEqualTo(10);
         assertThat(response.totalElements()).isEqualTo(21);
         assertThat(response.totalPages()).isEqualTo(3);
+    }
+
+    @Test
+    void getAllShouldNormalizeSearchAndApplyStatusBeforePaging() {
+        when(personRepository.findAllBySearchAndStatus(eq("Ada"), eq(PersonStatus.ACTIVE), any(Pageable.class)))
+                .thenAnswer(invocation -> new PageImpl<>(List.of(), invocation.getArgument(2), 0));
+
+        personService.getAll(0, "  Ada  ", PersonStatus.ACTIVE);
+
+        verify(personRepository).findAllBySearchAndStatus(eq("Ada"), eq(PersonStatus.ACTIVE), any(Pageable.class));
+    }
+
+    @Test
+    void getStatisticsShouldReturnConsistentStatusCounts() {
+        when(personRepository.countByStatus(PersonStatus.ACTIVE)).thenReturn(180L);
+        when(personRepository.countByStatus(PersonStatus.INACTIVE)).thenReturn(20L);
+
+        PersonStatisticsResponse response = personService.getStatistics();
+
+        assertThat(response.total()).isEqualTo(200L);
+        assertThat(response.active()).isEqualTo(180L);
+        assertThat(response.inactive()).isEqualTo(20L);
     }
 
     @Test

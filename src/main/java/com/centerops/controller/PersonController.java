@@ -4,6 +4,8 @@ import com.centerops.dto.request.PersonCreateRequest;
 import com.centerops.dto.request.PersonUpdateRequest;
 import com.centerops.dto.response.PageResponse;
 import com.centerops.dto.response.PersonResponse;
+import com.centerops.dto.response.PersonStatisticsResponse;
+import com.centerops.entity.PersonStatus;
 import com.centerops.service.PersonService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,9 +30,16 @@ public class PersonController {
 
     @GetMapping
     public ResponseEntity<PageResponse<PersonResponse>> getAll(
-            @RequestParam(defaultValue = "0") int page
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) PersonStatus status
     ) {
-        return ResponseEntity.ok(personService.getAll(page));
+        return ResponseEntity.ok(personService.getAll(page, search, status));
+    }
+
+    @GetMapping("/statistics")
+    public ResponseEntity<PersonStatisticsResponse> getStatistics() {
+        return ResponseEntity.ok(personService.getStatistics());
     }
 
     @GetMapping("/{id}")
