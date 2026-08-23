@@ -19,8 +19,9 @@ public class AlertController {
 
     @GetMapping
     public ResponseEntity<PageResponse<AlertResponse>> getAll(
-            @RequestParam(defaultValue = "0") int page
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(required = false) Integer priority
     ) {
-        return ResponseEntity.ok(alertService.getAllByPriority(page));
+        return ResponseEntity.ok(alertService.getAllByPriority(page, priority));
     }
 }
