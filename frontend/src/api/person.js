@@ -28,6 +28,11 @@ export function updatePerson(id, payload) {
   return callApi(() => http.put(`/people/${id}`, payload))
 }
 
+// GET /api/people/statistics －查詢人員統計
+export function getPersonStatistics() {
+  return callApi(() => http.get('/people/statistics'))
+}
+
 // GET /api/people/{personId}/enrollments －查詢該學員的學習紀錄（分頁，Module 3 也會用到）
 // 回傳格式同 getPeople()：Page<EnrollmentResponse>
 export function getPersonEnrollments(personId, params = {}) {

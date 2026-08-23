@@ -36,13 +36,17 @@ const PRIORITY_FILTER_OPTIONS = [
 async function loadAlerts() {
   loading.value = true
   try {
-    const result = await getAlerts({
+    const params = {
       page: page.value - 1,
       size: PAGE_SIZE,
-      priority: priorityFilter.value === 'ALL' ? '' : priorityFilter.value,
-    })
-    alerts.value = result.content
-    totalItems.value = result.totalElements
+    };
+    if (priorityFilter.value !== 'ALL') {
+      params.priority = priorityFilter.value;
+    }
+
+    const result = await getAlerts(params);
+    alerts.value = result.content;
+    totalItems.value = result.totalElements;
   } catch (error) {
     toast.error(extractErrorMessage(error, '讀取警示清單失敗'))
   } finally {

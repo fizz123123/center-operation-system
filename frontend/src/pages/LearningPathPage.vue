@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import Icon from '../components/common/Icon.vue'
 import FormField from '../components/common/FormField.vue'
-import { getLearningPath, getCourses } from '../api/course.js'
+import { getLearningPath, getCourseOptions } from '../api/course.js' // 引入 getCourseOptions
 import { useToastStore } from '../stores/toast.js'
 import { extractErrorMessage } from '../utils/errorMessage.js'
 
@@ -12,20 +12,26 @@ import { extractErrorMessage } from '../utils/errorMessage.js'
 // 1. 「選課程看關係」：選一門課，只顯示跟它「直接」相關的先修／後續課程——
 //    資料直接讀 course.prerequisiteIds 這個欄位（來自 GET /api/courses），純粹是欄位查詢，
 //    不做遞迴、不走訪整張圖，所以不算「前端實作圖演算法」。
-// 2. 「完整學習路徑」：後端用 CourseGraph 做拓樸排序（Topological Sort）後的完整建議修課順序，
+// 2. 「一組可行的建議修課順序」：後端用 CourseGraph 做拓樸排序（Topological Sort）後的完整建議修課順序，
 //    對應 GET /api/courses/learning-path，前端只負責顯示陣列，排序邏輯完全在後端／資料結構模組。
 const toast = useToastStore()
 
-const path = ref([])
+const learningPathNodes = ref([]) // 儲存 learning-path API 返回的 nodes
+const learningPathEdges = ref([]) // 儲存 learning-path API 返回的 edges
+const topologicalOrder = ref([])  // 儲存 learning-path API 返回的 topologicalOrder
 const loadingPath = ref(true)
-const courses = ref([])
+
+const courses = ref([]) // 儲存 getCourseOptions 返回的課程列表
 const loadingCourses = ref(true)
 const selectedCourseId = ref('')
 
 async function loadPath() {
   loadingPath.value = true
   try {
-    path.value = await getLearningPath()
+    const result = await getLearningPath()
+    learningPathNodes.value = result.nodes
+    learningPathEdges.value = result.edges
+    topologicalOrder.value = result.topologicalOrder
   } catch (error) {
     toast.error(extractErrorMessage(error, '讀取學習路徑失敗'))
   } finally {
@@ -36,10 +42,8 @@ async function loadPath() {
 async function loadCourses() {
   loadingCourses.value = true
   try {
-    // getCourses() 現在回傳分頁格式（{ content, totalElements, ... }），這裡要顯示的下拉選單需要「全部課程」，
-    // 用一個夠大的 size（500，涵蓋預期的最大筆數 200+）一次抓回來，不需要真的做分頁瀏覽
-    const result = await getCourses({ page: 0, size: 500 })
-    courses.value = result.content
+    // 使用 getCourseOptions 取得不分頁的輕量資料
+    courses.value = await getCourseOptions()
   } catch (error) {
     toast.error(extractErrorMessage(error, '讀取課程列表失敗'))
   } finally {
@@ -69,6 +73,14 @@ const directFollowUps = computed(() => {
   if (!selectedCourse.value) return []
   return courses.value.filter((c) => c.prerequisiteIds?.includes(selectedCourse.value.id))
 })
+
+// 將 topologicalOrder 中的課程 ID 轉換為課程名稱
+const orderedCourseNames = computed(() => {
+  return topologicalOrder.value.map(id => {
+    const course = learningPathNodes.value.find(node => node.id === id);
+    return course ? `${course.code} - ${course.name}` : `#${id}`;
+  });
+});
 </script>
 
 <template>
@@ -109,27 +121,27 @@ const directFollowUps = computed(() => {
       </div>
     </section>
 
-    <!-- 第二段：完整拓樸排序結果（範例展示用，對應 Demo Step 7） -->
+    <!-- 第二段：一組可行的建議修課順序 -->
     <section class="panel">
-      <h2>完整課程學習路徑</h2>
+      <h2>一組可行的建議修課順序</h2>
 
       <div v-if="loadingPath" class="path-skeleton" aria-hidden="true">
         <span v-for="n in 4" :key="n"></span>
       </div>
 
-      <div v-else-if="path.length === 0" class="empty-state">
+      <div v-else-if="topologicalOrder.length === 0" class="empty-state">
         <Icon name="route" :size="24" />
         <p>目前還沒有課程資料，無法產生學習路徑。</p>
       </div>
 
       <!-- role="list" 讓這條「視覺上是流程圖、語意上是有序清單」的內容，對螢幕閱讀器來說仍然是一份清單 -->
-      <ol v-else class="path-flow" aria-label="課程學習路徑，依先修順序排列">
-        <li v-for="(courseName, index) in path" :key="courseName" class="path-step">
+      <ol v-else class="path-flow" aria-label="一組可行的建議修課順序">
+        <li v-for="(courseName, index) in orderedCourseNames" :key="index" class="path-step">
           <div class="path-node">
             <span class="path-index">{{ index + 1 }}</span>
             <span class="path-name">{{ courseName }}</span>
           </div>
-          <Icon v-if="index < path.length - 1" name="chevron-down" :size="18" class="path-arrow" />
+          <!-- 移除暗示直接先修關係的箭頭 -->
         </li>
       </ol>
     </section>
@@ -222,10 +234,11 @@ const directFollowUps = computed(() => {
   color: var(--color-text-primary);
 }
 
-.path-arrow {
+/* 移除 path-arrow 的樣式，因為已經移除了箭頭元素 */
+/* .path-arrow {
   color: var(--color-brand-400);
   margin: 2px 0;
-}
+} */
 
 .path-skeleton {
   display: flex;
