@@ -163,6 +163,7 @@ Constraints:
 
 - `UNIQUE(person_id, course_id)`：避免同一學員重複註冊同一課程
 - 刪除 Person 或 Course 時，相關 Enrollment 一併刪除
+- 狀態只允許向前轉換（`NOT_STARTED` 可轉為 `IN_PROGRESS` 或 `COMPLETED`，`IN_PROGRESS` 可轉為 `COMPLETED`）；`COMPLETED` 不可回退或再次修改，此規則由 Service 驗證
 
 
 ---
@@ -196,7 +197,16 @@ Constraints:
 
 - `UNIQUE(course_id, prerequisite_id)`：避免重複先修關係
 - `course_id <> prerequisite_id`：禁止課程將自己設為先修課程
+- 新增關係前由 Course Graph 檢查不得形成 Cycle
 - 刪除 Course 時，相關先修關係一併刪除
+
+Graph 邊的方向統一定義為：
+
+```text
+prerequisite_id → course_id
+```
+
+即「先修課程指向依賴它的課程」。
 
 
 ---
@@ -219,6 +229,16 @@ Constraints:
 | created_at | DATETIME | NOT NULL |
 
 刪除 Person 時相關 Alert 一併刪除；刪除 Course 時保留 Alert，並將 `course_id` 設為 `NULL`。
+
+Priority 定義：
+
+| Value | Meaning |
+|-:|-|
+| 3 | HIGH，需立即處理 |
+| 2 | MEDIUM，需要追蹤 |
+| 1 | LOW，一般提醒 |
+
+`priority` 是 Alert 建立時保存的事件快照。`MaxHeap` 只負責排序，不負責計算 priority。
 
 
 ---
@@ -350,7 +370,9 @@ COMPLETED
 檢查：
 
 - 同一人不可重複註冊同課程
-- 狀態轉換合理
+- `NOT_STARTED` 可轉為 `IN_PROGRESS` 或 `COMPLETED`
+- `IN_PROGRESS` 只能轉為 `COMPLETED`
+- `COMPLETED` 紀錄不可再修改
 
 
 ---
@@ -369,6 +391,19 @@ COMPLETED
 | Alert | 30 |
 
 此資料量足以展示人員與課程查詢、註冊狀態、Dashboard 統計、Course Graph 與 Alert Priority Queue。
+
+目前 30 筆 Alert 是可重複載入的 Demo seed data，message 與 priority 均由 SQL 預先指定，並非由 Enrollment 自動分析產生。
+
+目標 MVP 由 Alert Generator 掃描 Enrollment 並建立或更新警示，採用不擴充 schema 的確定性規則：
+
+| Enrollment condition | Alert priority |
+|-|-:|
+| `IN_PROGRESS` 且開始已滿 90 天 | 3 |
+| `IN_PROGRESS` 且開始已滿 30 天、未滿 90 天 | 2 |
+| `NOT_STARTED` | 1 |
+| `COMPLETED` | 不產生警示 |
+
+Alert Generator 負責判斷是否產生警示及 priority；自訂 MaxHeap 接收已判定的 Alert 並提供優先順序。若未來加入期限或最後活動時間，再以 `due_date`／`last_activity_at` 取代目前依 `start_date` 推導的 MVP 規則。
 
 
 ## Graph Data

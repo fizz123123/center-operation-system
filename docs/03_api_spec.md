@@ -9,6 +9,8 @@
 - ResponseEntity 統一回傳
 - HTTP Status Code 正確使用
 
+本文件描述整合測試會議確認後的目標 API 契約。若目前程式尚未支援本文件新增的查詢參數、DTO 或端點，應視為待實作項目，通過 `docs/06_test_strategy.md` 對應測試後才算完成。
+
 
 API Flow:
 
@@ -77,6 +79,7 @@ GET /api/{resource}?page=0
 - `page` 從 0 開始，未提供時預設為 0
 - 每頁固定 10 筆，不開放前端修改 page size
 - 負數 page 回傳 `400 BAD REQUEST`
+- 搜尋、篩選與排序必須先在 Backend 套用，再對完整結果分頁；Frontend 不得只處理目前載入的 10 筆
 
 共同回應格式：
 
@@ -105,7 +108,20 @@ GET /api/{resource}?page=0
 
 ```http
 GET /api/people?page=0
+GET /api/people?page=0&status=ACTIVE
+GET /api/people?page=0&search=王
+GET /api/people?page=0&status=ACTIVE&search=wang@example.com
 ```
+
+Query Parameters:
+
+| Parameter | Required | Description |
+|-|-|-|
+| `page` | No | 從 0 開始，預設 0 |
+| `status` | No | `ACTIVE` 或 `INACTIVE`；全部資料時不傳 |
+| `search` | No | 姓名或 Email 的部分比對，英文忽略大小寫 |
+
+切換狀態或搜尋文字時，Frontend 必須將頁碼重設為 0；搜尋欄建議使用 300–500ms debounce。
 
 
 ### Response
@@ -262,6 +278,31 @@ Status:
 
 ---
 
+## 3.5 查詢人員統計
+
+統計值永遠以所有人員為母體，不受列表目前的搜尋、篩選或頁碼影響。
+
+Request:
+
+```http
+GET /api/people/statistics
+```
+
+Response:
+
+```json
+{
+  "total": 200,
+  "active": 180,
+  "inactive": 20
+}
+```
+
+必須滿足 `total = active + inactive`。
+
+
+---
+
 # 4. Course API
 
 
@@ -272,7 +313,10 @@ Request:
 
 ```http
 GET /api/courses?page=0
+GET /api/courses?page=0&search=java
 ```
+
+`search` 對課程代碼或名稱做部分比對，英文忽略大小寫。搜尋必須由 Backend 在分頁前完成。
 
 
 Response:
@@ -283,7 +327,9 @@ Response:
     {
       "id":1,
       "code":"JAVA01",
-      "name":"Java Basic"
+      "name":"Java Basic",
+      "description":"Java introduction",
+      "prerequisiteIds":[]
     }
   ],
   "page":0,
@@ -323,9 +369,11 @@ Response:
 
 ```json
 {
-"id":1,
-"code":"JAVA01",
-"name":"Java Basic"
+  "id":1,
+  "code":"JAVA01",
+  "name":"Java Basic",
+  "description":"Java introduction",
+  "prerequisiteIds":[]
 }
 ```
 
@@ -392,6 +440,72 @@ Course 3
 Course 2
 ```
 
+Backend 必須再次驗證：
+
+- 不得將自己設為先修課程
+- 不得建立重複關係
+- 新增後不得形成 Cycle
+
+成功回傳 `201 CREATED`；形成 Cycle 時回傳 `409 CONFLICT`。
+
+
+---
+
+## 4.5 移除課程先修關係
+
+```http
+DELETE /api/courses/{courseId}/prerequisites/{prerequisiteId}
+```
+
+成功回傳 `204 NO CONTENT`。Frontend 不得只在本地移除關係；重新整理後顯示內容必須與 Database 一致。
+
+
+---
+
+## 4.6 查詢可用先修課程
+
+```http
+GET /api/courses/{courseId}/available-prerequisites
+```
+
+Response:
+
+```json
+[
+  {
+    "id": 2,
+    "code": "CS102",
+    "name": "Object Oriented Programming"
+  }
+]
+```
+
+Backend 應排除課程自己、已存在的先修課程，以及新增後會形成 Cycle 的課程。此端點用於改善操作體驗；建立關係的 POST 仍須重新驗證 Cycle，以避免查詢候選後資料發生變動。
+
+
+---
+
+## 4.7 查詢課程選項
+
+提供不分頁的輕量資料，供學習路徑頁下拉選單及直接關係顯示使用；不以任意大的 `size` 規避分頁限制。
+
+```http
+GET /api/courses/options
+```
+
+Response:
+
+```json
+[
+  {
+    "id": 1,
+    "code": "JAVA01",
+    "name": "Java Basic",
+    "prerequisiteIds": []
+  }
+]
+```
+
 
 ---
 
@@ -405,9 +519,19 @@ Request:
 
 ```http
 GET /api/enrollments?page=0
+GET /api/enrollments?page=0&sort=courseName&direction=asc
 ```
 
 Response 使用共同分頁格式，`content` 為 `EnrollmentResponse`。
+
+允許的排序參數：
+
+| Parameter | Value |
+|-|-|
+| `sort` | 目前只允許 `courseName` |
+| `direction` | `asc` 或 `desc` |
+
+排序必須先套用於完整查詢結果，再切出指定頁面；不允許 Frontend 只排序目前頁面的 10 筆資料。切換排序方向時，Frontend 必須回到第 0 頁。
 
 
 ---
@@ -420,6 +544,7 @@ Request:
 
 ```http
 GET /api/people/{personId}/enrollments?page=0
+GET /api/people/{personId}/enrollments?page=0&sort=courseName&direction=desc
 ```
 
 
@@ -502,6 +627,21 @@ Body:
 }
 ```
 
+允許的狀態轉換：
+
+```text
+NOT_STARTED → IN_PROGRESS
+NOT_STARTED → COMPLETED
+IN_PROGRESS → COMPLETED
+COMPLETED → 無後續狀態
+```
+
+- 不允許狀態倒退
+- `COMPLETED` 是終止狀態，不可再次修改
+- Frontend 對已完成紀錄應停用狀態選單並顯示唯讀提示
+- Backend 必須保留驗證，不能只依賴 Frontend
+- 非法轉換回傳 `409 CONFLICT`
+
 
 ---
 
@@ -548,21 +688,40 @@ GET /api/courses/learning-path
 Response:
 
 ```json
-[
-"Java Basic",
-"OOP",
-"Data Structure",
-"Algorithm"
-]
+{
+  "nodes": [
+    {
+      "id": 1,
+      "code": "JAVA01",
+      "name": "Java Basic"
+    },
+    {
+      "id": 2,
+      "code": "OOP01",
+      "name": "Object Oriented Programming"
+    }
+  ],
+  "edges": [
+    {
+      "fromCourseId": 1,
+      "toCourseId": 2
+    }
+  ],
+  "topologicalOrder": [1, 2]
+}
 ```
+
+邊的方向固定為「先修課程 → 依賴它的課程」。`topologicalOrder` 是一組合法順序，不代表唯一答案，也不表示陣列中每兩個相鄰節點存在直接先修關係。
 
 
 用途：
 
-展示：
+- `nodes` 與 `edges`：顯示真正的 Course Graph 關係
+- `topologicalOrder`：顯示一組可行的建議修課順序
 
-- Topological Sort
-- BFS / DFS
+若 Frontend 以線性清單顯示拓樸排序，標題應使用「一組可行的建議修課順序」，不得用連續箭頭暗示相鄰課程具有直接依賴。
+
+BFS 與 DFS 由演算法模組獨立提供及測試；本端點不宣稱回傳 BFS／DFS 結果。
 
 
 ---
@@ -577,7 +736,17 @@ Request:
 
 ```http
 GET /api/alerts?page=0
+GET /api/alerts?page=0&priority=3
 ```
+
+Query Parameters:
+
+| Parameter | Required | Description |
+|-|-|-|
+| `page` | No | 從 0 開始，預設 0 |
+| `priority` | No | `3`、`2` 或 `1`；全部警示時不傳 |
+
+篩選必須在分頁前由 Backend 完成，`totalElements` 與 `totalPages` 應反映篩選後結果。非法 priority 回傳 `400 BAD REQUEST`。
 
 
 Response:
@@ -618,7 +787,18 @@ Priority:
 - `2 MEDIUM`：需要追蹤
 - `1 LOW`：一般提醒
 
-目前 MVP 尚未根據期限自動計算 Priority；若後續加入 Alert Generator，應由業務規則產生 priority，再交由自訂 MaxHeap 展示優先排程。
+目前 `sample_data.sql` 的 Alert 全部是 Demo seed data，message 與 priority 均預先指定。Backend 目前只保存並排序 priority，尚未自動分析 Enrollment 產生警示。
+
+目標 MVP 的 Alert Generator 規則：
+
+| Enrollment condition | Priority |
+|-|-:|
+| `IN_PROGRESS` 且開始已滿 90 天 | 3 |
+| `IN_PROGRESS` 且開始已滿 30 天、未滿 90 天 | 2 |
+| `NOT_STARTED` | 1 |
+| `COMPLETED` | 不產生警示 |
+
+Alert Generator 負責決定是否建立警示與 priority；自訂 MaxHeap 只負責排列已判定的 Alert，不負責業務判斷。
 
 
 ---
@@ -666,6 +846,19 @@ String status;
 
 ---
 
+## PersonStatisticsResponse
+
+```java
+record PersonStatisticsResponse(
+    long total,
+    long active,
+    long inactive
+) {}
+```
+
+
+---
+
 ## CourseCreateRequest
 
 
@@ -679,6 +872,34 @@ String name;
 String description;
 
 }
+```
+
+
+---
+
+## CourseResponse
+
+```java
+record CourseResponse(
+    Long id,
+    String code,
+    String name,
+    String description,
+    List<Long> prerequisiteIds
+) {}
+```
+
+
+---
+
+## CourseGraphResponse
+
+```java
+record CourseGraphResponse(
+    List<CourseNodeResponse> nodes,
+    List<CourseEdgeResponse> edges,
+    List<Long> topologicalOrder
+) {}
 ```
 
 
@@ -760,3 +981,7 @@ Backend 完成後確認：
 - [ ] Service 使用 Interface
 - [ ] Validation 完成
 - [ ] Exception 統一處理
+- [ ] 搜尋、篩選與排序在分頁前由 Backend 完成
+- [ ] Course Response 與 Graph Response 能表達先修關係
+- [ ] 已完成 Enrollment 不可再修改
+- [ ] Alert Generator 與 MaxHeap 責任分離

@@ -167,7 +167,10 @@ Example:
 public interface CourseService {
 
 
-PageResponse<CourseResponse> getCourses(int page);
+PageResponse<CourseResponse> getCourses(
+int page,
+String search
+);
 
 
 CourseResponse createCourse(
@@ -206,6 +209,27 @@ private final CourseRepository repository;
 
 }
 ```
+
+
+## 分頁查詢責任
+
+人員、課程、修課紀錄與警示的搜尋、篩選及排序由 Service／Repository 在分頁前完成。Frontend 只傳入查詢條件並顯示 `PageResponse`，不得只處理目前載入的 10 筆資料。
+
+```text
+Query Parameters
+↓
+Controller
+↓
+Service 驗證允許的條件
+↓
+Repository／Algorithm 對完整結果查詢、篩選與排序
+↓
+PageResponse
+```
+
+人員統計使用專屬 `PersonStatisticsResponse`，不把人員特有欄位加入共用的 `PageResponse<T>`。
+
+課程先修關係的可用候選由 Backend Course Graph 判斷。Frontend 可先隱藏會形成 Cycle 的選項，但建立關係時 Service 仍須再次驗證。
 
 
 ---
@@ -410,6 +434,10 @@ MaxHeap
 - 不依賴 Spring
 - 不直接存取 Database
 
+`CourseGraph` 的邊統一定義為「先修課程 → 依賴它的課程」，並提供節點、邊與拓樸排序結果。拓樸排序只保證先修課程出現在依賴課程之前，不代表結果中相鄰節點有直接關係。
+
+`MaxHeap` 只負責排列已具有 priority 的 Alert，不得包含「什麼情況應產生警示」的業務規則。
+
 
 ---
 
@@ -460,6 +488,20 @@ analytics/
 - Dashboard 計算
 - Completion Rate
 - Alert Generator
+
+Alert Generator 的 MVP 規則以 Enrollment status 與 start date 判斷是否產生警示及 priority；完成判定後再交給 MaxHeap 排序。兩者責任分離：
+
+```text
+Enrollment Repository
+↓
+Alert Generator（建立／更新 Alert，決定 priority）
+↓
+Alert Repository
+↓
+MaxHeap（依 priority 排序）
+↓
+Alert／Dashboard Response DTO
+```
 
 
 流程：
@@ -608,33 +650,34 @@ Rollback
 # 15. Frontend Architecture
 
 
-前端放：
+前端原始碼放：
 
 ```
-src/main/resources/static
+frontend/
 ```
 
+Vite 建置輸出放：
 
-原因：
+```
+src/main/resources/static/
+```
 
-- Spring Boot 自動提供
+此配置的原因：
+
+- 開發時由 Vite dev server 將 `/api` proxy 到 Spring Boot
+- 部署時由 Spring Boot 提供編譯後靜態檔案
 - 單體部署
-- 不需處理 CORS
+- 開發 proxy 與正式環境同源部署均不需額外 CORS 設定
 
 
-結構：
+Frontend 修改後必須重新執行 Vite build，才能更新 `static/` 內的部署成品。原始碼與建置成品不可混為同一層。
+
+建置成品結構：
 
 ```text
 static/
 
 ├── index.html
-
-├── pages/
-
-├── js/
-
-├── css/
-
 └── assets/
 ```
 

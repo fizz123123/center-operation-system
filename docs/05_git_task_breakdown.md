@@ -34,25 +34,24 @@ Branch 用途：
 ```text
 center-operation-system/
 
-├── backend
-│
-├── frontend
-│
-├── database
-│
-└── docs
+├── frontend/                         # Vue/Vite 原始碼
+├── src/main/java/                    # Spring Boot Backend
+├── src/main/resources/static/        # Vite 編譯後成品
+├── database/
+├── docs/
+└── pom.xml
 ```
 
 
 實際採用：
 
-Spring Boot Monolith：
+Vue/Vite 原始碼與 Spring Boot Backend 位於同一 Repository。開發時使用 Vite proxy 呼叫 `/api`；正式建置輸出至：
 
 ```text
-src/main/resources/static
+src/main/resources/static/
 ```
 
-存放前端。
+由 Spring Boot 以同源方式提供前端成品。
 
 
 ---
