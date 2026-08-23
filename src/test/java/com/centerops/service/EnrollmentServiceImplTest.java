@@ -7,6 +7,7 @@ import com.centerops.entity.Course;
 import com.centerops.entity.Enrollment;
 import com.centerops.entity.EnrollmentStatus;
 import com.centerops.entity.Person;
+import com.centerops.exception.BusinessConflictException;
 import com.centerops.exception.DuplicateResourceException;
 import com.centerops.exception.InvalidStateException;
 import com.centerops.mapper.EnrollmentMapper;
@@ -22,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import java.time.LocalDate;
 import java.util.Optional;
@@ -70,13 +72,59 @@ class EnrollmentServiceImplTest {
                 ));
         when(enrollmentMapper.toResponse(enrollment)).thenReturn(mapped);
 
-        var page = enrollmentService.getAll(1);
+        var page = enrollmentService.getAll(1, null, "asc");
 
         assertThat(page.content()).containsExactly(mapped);
         assertThat(page.page()).isEqualTo(1);
         assertThat(page.size()).isEqualTo(10);
         assertThat(page.totalElements()).isEqualTo(25);
         assertThat(page.last()).isFalse();
+    }
+
+    @Test
+    void getAllShouldSortByCourseNameDescendingBeforePaging() {
+        when(enrollmentRepository.findAll(any(Pageable.class)))
+                .thenAnswer(invocation -> new PageImpl<>(
+                        java.util.List.of(),
+                        invocation.getArgument(0),
+                        0
+                ));
+
+        enrollmentService.getAll(0, "courseName", "desc");
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(enrollmentRepository).findAll(captor.capture());
+        assertThat(captor.getValue().getSort().getOrderFor("course.name").getDirection())
+                .isEqualTo(Sort.Direction.DESC);
+        assertThat(captor.getValue().getSort().getOrderFor("id").getDirection())
+                .isEqualTo(Sort.Direction.ASC);
+    }
+
+    @Test
+    void getAllShouldRejectUnsupportedSortField() {
+        assertThatThrownBy(() -> enrollmentService.getAll(0, "status", "asc"))
+                .isInstanceOf(InvalidStateException.class)
+                .hasMessageContaining("courseName");
+
+        verify(enrollmentRepository, never()).findAll(any(Pageable.class));
+    }
+
+    @Test
+    void getByPersonIdShouldUseRequestedCourseNameSort() {
+        when(personRepository.existsById(1L)).thenReturn(true);
+        when(enrollmentRepository.findAllByPersonId(any(Long.class), any(Pageable.class)))
+                .thenAnswer(invocation -> new PageImpl<>(
+                        java.util.List.of(),
+                        invocation.getArgument(1),
+                        0
+                ));
+
+        enrollmentService.getByPersonId(1L, 0, "courseName", "asc");
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(enrollmentRepository).findAllByPersonId(org.mockito.ArgumentMatchers.eq(1L), captor.capture());
+        assertThat(captor.getValue().getSort().getOrderFor("course.name").getDirection())
+                .isEqualTo(Sort.Direction.ASC);
     }
 
     @Test
@@ -146,15 +194,32 @@ class EnrollmentServiceImplTest {
     void updateStatusShouldRejectBackwardTransition() {
         Enrollment enrollment = Enrollment.builder()
                 .id(10L)
+                .status(EnrollmentStatus.IN_PROGRESS)
+                .build();
+        when(enrollmentRepository.findById(10L)).thenReturn(Optional.of(enrollment));
+
+        EnrollmentUpdateRequest request = new EnrollmentUpdateRequest(EnrollmentStatus.NOT_STARTED);
+
+        assertThatThrownBy(() -> enrollmentService.updateStatus(10L, request))
+                .isInstanceOf(BusinessConflictException.class)
+                .hasMessageContaining("backwards");
+
+        verify(enrollmentRepository, never()).save(any(Enrollment.class));
+    }
+
+    @Test
+    void updateStatusShouldRejectAnyChangeAfterCompletion() {
+        Enrollment enrollment = Enrollment.builder()
+                .id(10L)
                 .status(EnrollmentStatus.COMPLETED)
                 .build();
         when(enrollmentRepository.findById(10L)).thenReturn(Optional.of(enrollment));
 
-        EnrollmentUpdateRequest request = new EnrollmentUpdateRequest(EnrollmentStatus.IN_PROGRESS);
+        EnrollmentUpdateRequest request = new EnrollmentUpdateRequest(EnrollmentStatus.COMPLETED);
 
         assertThatThrownBy(() -> enrollmentService.updateStatus(10L, request))
-                .isInstanceOf(InvalidStateException.class)
-                .hasMessageContaining("backwards");
+                .isInstanceOf(BusinessConflictException.class)
+                .hasMessageContaining("cannot be modified");
 
         verify(enrollmentRepository, never()).save(any(Enrollment.class));
     }

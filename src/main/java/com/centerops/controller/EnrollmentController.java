@@ -27,17 +27,21 @@ public class EnrollmentController {
 
     @GetMapping("/enrollments")
     public ResponseEntity<PageResponse<EnrollmentResponse>> getAll(
-            @RequestParam(defaultValue = "0") int page
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(required = false) String sort,
+            @RequestParam(defaultValue = "asc") String direction
     ) {
-        return ResponseEntity.ok(enrollmentService.getAll(page));
+        return ResponseEntity.ok(enrollmentService.getAll(page, sort, direction));
     }
 
     @GetMapping("/people/{personId}/enrollments")
     public ResponseEntity<PageResponse<EnrollmentResponse>> getByPersonId(
             @PathVariable Long personId,
-            @RequestParam(defaultValue = "0") int page
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(required = false) String sort,
+            @RequestParam(defaultValue = "asc") String direction
     ) {
-        return ResponseEntity.ok(enrollmentService.getByPersonId(personId, page));
+        return ResponseEntity.ok(enrollmentService.getByPersonId(personId, page, sort, direction));
     }
 
     @PostMapping("/enrollments")

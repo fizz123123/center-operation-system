@@ -8,6 +8,7 @@ import com.centerops.entity.Course;
 import com.centerops.entity.Enrollment;
 import com.centerops.entity.EnrollmentStatus;
 import com.centerops.entity.Person;
+import com.centerops.exception.BusinessConflictException;
 import com.centerops.exception.DuplicateResourceException;
 import com.centerops.exception.InvalidStateException;
 import com.centerops.exception.ResourceNotFoundException;
@@ -35,28 +36,37 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     private final EnrollmentMapper enrollmentMapper;
 
     @Override
-    public PageResponse<EnrollmentResponse> getAll(int page) {
+    public PageResponse<EnrollmentResponse> getAll(int page, String sort, String direction) {
         validatePage(page);
         return PageResponse.from(
                 enrollmentRepository.findAll(PageRequest.of(
                                 page,
                                 PageResponse.DEFAULT_SIZE,
-                                Sort.by(Sort.Direction.ASC, "id")
+                                buildSort(sort, direction)
                         ))
                         .map(enrollmentMapper::toResponse)
         );
     }
 
     @Override
-    public PageResponse<EnrollmentResponse> getByPersonId(Long personId, int page) {
+    public PageResponse<EnrollmentResponse> getByPersonId(
+            Long personId,
+            int page,
+            String sort,
+            String direction
+    ) {
         validatePage(page);
         if (!personRepository.existsById(personId)) {
             throw new ResourceNotFoundException("Person", personId);
         }
         return PageResponse.from(
-                enrollmentRepository.findAllByPersonIdOrderByIdAsc(
+                enrollmentRepository.findAllByPersonId(
                                 personId,
-                                PageRequest.of(page, PageResponse.DEFAULT_SIZE)
+                                PageRequest.of(
+                                        page,
+                                        PageResponse.DEFAULT_SIZE,
+                                        buildSort(sort, direction)
+                                )
                         )
                         .map(enrollmentMapper::toResponse)
         );
@@ -89,8 +99,11 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         EnrollmentStatus current = enrollment.getStatus();
         EnrollmentStatus target = request.status();
 
+        if (current == EnrollmentStatus.COMPLETED) {
+            throw new BusinessConflictException("Completed enrollment status cannot be modified");
+        }
         if (target.ordinal() < current.ordinal()) {
-            throw new InvalidStateException("Enrollment status cannot move backwards");
+            throw new BusinessConflictException("Enrollment status cannot move backwards");
         }
         if (target != EnrollmentStatus.NOT_STARTED && enrollment.getStartDate() == null) {
             enrollment.setStartDate(LocalDate.now());
@@ -105,5 +118,23 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         if (page < 0) {
             throw new InvalidStateException("Page index must be zero or greater");
         }
+    }
+
+    private Sort buildSort(String sort, String direction) {
+        Sort.Direction sortDirection;
+        try {
+            sortDirection = Sort.Direction.fromString(direction);
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidStateException("direction must be asc or desc");
+        }
+
+        if (sort == null || sort.isBlank()) {
+            return Sort.by(Sort.Direction.ASC, "id");
+        }
+        if (!"courseName".equals(sort)) {
+            throw new InvalidStateException("sort must be courseName");
+        }
+        return Sort.by(sortDirection, "course.name")
+                .and(Sort.by(Sort.Direction.ASC, "id"));
     }
 }

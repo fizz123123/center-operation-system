@@ -7,7 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
-    Page<Enrollment> findAllByPersonIdOrderByIdAsc(Long personId, Pageable pageable);
+    Page<Enrollment> findAllByPersonId(Long personId, Pageable pageable);
 
     boolean existsByPersonIdAndCourseId(Long personId, Long courseId);
 
