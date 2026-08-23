@@ -4,6 +4,7 @@ import com.centerops.dto.request.CourseCreateRequest;
 import com.centerops.dto.request.CourseUpdateRequest;
 import com.centerops.dto.response.AvailablePrerequisiteResponse;
 import com.centerops.dto.response.CourseOptionResponse;
+import com.centerops.dto.response.CourseGraphResponse;
 import com.centerops.dto.response.CoursePrerequisiteResponse;
 import com.centerops.dto.response.CourseResponse;
 import com.centerops.dto.response.PageResponse;
@@ -27,5 +28,5 @@ public interface CourseService {
 
     void removePrerequisite(Long courseId, Long prerequisiteId);
 
-    List<String> getLearningPath();
+    CourseGraphResponse getLearningPath();
 }

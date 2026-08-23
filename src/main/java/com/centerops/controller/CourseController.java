@@ -5,6 +5,7 @@ import com.centerops.dto.request.CourseUpdateRequest;
 import com.centerops.dto.request.PrerequisiteCreateRequest;
 import com.centerops.dto.response.AvailablePrerequisiteResponse;
 import com.centerops.dto.response.CourseOptionResponse;
+import com.centerops.dto.response.CourseGraphResponse;
 import com.centerops.dto.response.CoursePrerequisiteResponse;
 import com.centerops.dto.response.CourseResponse;
 import com.centerops.dto.response.PageResponse;
@@ -91,7 +92,7 @@ public class CourseController {
     }
 
     @GetMapping("/learning-path")
-    public ResponseEntity<List<String>> getLearningPath() {
+    public ResponseEntity<CourseGraphResponse> getLearningPath() {
         return ResponseEntity.ok(courseService.getLearningPath());
     }
 }

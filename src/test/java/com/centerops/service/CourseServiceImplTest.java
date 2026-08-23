@@ -3,6 +3,8 @@ package com.centerops.service;
 import com.centerops.dto.request.CourseCreateRequest;
 import com.centerops.dto.response.AvailablePrerequisiteResponse;
 import com.centerops.dto.response.CourseOptionResponse;
+import com.centerops.dto.response.CourseEdgeResponse;
+import com.centerops.dto.response.CourseGraphResponse;
 import com.centerops.dto.response.CourseResponse;
 import com.centerops.entity.Course;
 import com.centerops.entity.CoursePrerequisite;
@@ -222,15 +224,22 @@ class CourseServiceImplTest {
     void getLearningPathShouldReturnPrerequisitesBeforeDependentCourses() {
         Course java = course(1L, "JAVA-001", "Java");
         Course oop = course(2L, "JAVA-002", "OOP");
+        Course database = course(3L, "DB-001", "Database");
         CoursePrerequisite relation = CoursePrerequisite.builder()
                 .course(oop)
                 .prerequisite(java)
                 .build();
 
-        when(courseRepository.findAll(any(Sort.class))).thenReturn(List.of(java, oop));
+        when(courseRepository.findAll(any(Sort.class))).thenReturn(List.of(java, oop, database));
         when(prerequisiteRepository.findAllByOrderByIdAsc()).thenReturn(List.of(relation));
 
-        assertThat(courseService.getLearningPath()).containsExactly("Java", "OOP");
+        CourseGraphResponse response = courseService.getLearningPath();
+
+        assertThat(response.nodes()).extracting("id").containsExactly(1L, 2L, 3L);
+        assertThat(response.edges()).containsExactly(new CourseEdgeResponse(1L, 2L));
+        assertThat(response.topologicalOrder()).containsExactly(1L, 3L, 2L);
+        assertThat(response.topologicalOrder().indexOf(1L))
+                .isLessThan(response.topologicalOrder().indexOf(2L));
     }
 
     private Course course(Long id, String code, String name) {

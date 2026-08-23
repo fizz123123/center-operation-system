@@ -4,6 +4,9 @@ import com.centerops.dto.request.CourseCreateRequest;
 import com.centerops.dto.request.CourseUpdateRequest;
 import com.centerops.dto.response.AvailablePrerequisiteResponse;
 import com.centerops.dto.response.CourseOptionResponse;
+import com.centerops.dto.response.CourseEdgeResponse;
+import com.centerops.dto.response.CourseGraphResponse;
+import com.centerops.dto.response.CourseNodeResponse;
 import com.centerops.dto.response.CoursePrerequisiteResponse;
 import com.centerops.dto.response.CourseResponse;
 import com.centerops.dto.response.PageResponse;
@@ -177,7 +180,7 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
-    public List<String> getLearningPath() {
+    public CourseGraphResponse getLearningPath() {
         List<Course> courses = courseRepository.findAll(Sort.by(Sort.Direction.ASC, "id"));
         List<CoursePrerequisite> relations = prerequisiteRepository.findAllByOrderByIdAsc();
 
@@ -202,10 +205,10 @@ public class CourseServiceImpl implements CourseService {
             }
         });
 
-        List<String> path = new ArrayList<>();
+        List<Long> topologicalOrder = new ArrayList<>();
         while (!ready.isEmpty()) {
             Long current = ready.remove();
-            path.add(byId.get(current).getName());
+            topologicalOrder.add(current);
             for (Long dependent : adjacency.getOrDefault(current, List.of())) {
                 int remaining = indegree.computeIfPresent(dependent, (ignored, value) -> value - 1);
                 if (remaining == 0) {
@@ -213,10 +216,19 @@ public class CourseServiceImpl implements CourseService {
                 }
             }
         }
-        if (path.size() != courses.size()) {
+        if (topologicalOrder.size() != courses.size()) {
             throw new InvalidStateException("Course prerequisite graph contains a cycle");
         }
-        return path;
+        List<CourseNodeResponse> nodes = courses.stream()
+                .map(course -> new CourseNodeResponse(course.getId(), course.getCode(), course.getName()))
+                .toList();
+        List<CourseEdgeResponse> edges = relations.stream()
+                .map(relation -> new CourseEdgeResponse(
+                        relation.getPrerequisite().getId(),
+                        relation.getCourse().getId()
+                ))
+                .toList();
+        return new CourseGraphResponse(nodes, edges, topologicalOrder);
     }
 
     private Map<Long, List<Long>> buildAdjacency(List<CoursePrerequisite> relations) {

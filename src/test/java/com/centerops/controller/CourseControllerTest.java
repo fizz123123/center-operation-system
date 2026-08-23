@@ -2,6 +2,9 @@ package com.centerops.controller;
 
 import com.centerops.dto.response.AvailablePrerequisiteResponse;
 import com.centerops.dto.response.CourseOptionResponse;
+import com.centerops.dto.response.CourseEdgeResponse;
+import com.centerops.dto.response.CourseGraphResponse;
+import com.centerops.dto.response.CourseNodeResponse;
 import com.centerops.dto.response.CoursePrerequisiteResponse;
 import com.centerops.dto.response.PageResponse;
 import com.centerops.exception.BusinessConflictException;
@@ -119,5 +122,25 @@ class CourseControllerTest {
         mockMvc.perform(get("/api/courses/2/available-prerequisites"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(1));
+    }
+
+    @Test
+    void learningPathShouldReturnNodesEdgesAndTopologicalOrder() throws Exception {
+        CourseGraphResponse response = new CourseGraphResponse(
+                List.of(
+                        new CourseNodeResponse(1L, "JAVA-001", "Java"),
+                        new CourseNodeResponse(2L, "OOP-001", "OOP")
+                ),
+                List.of(new CourseEdgeResponse(1L, 2L)),
+                List.of(1L, 2L)
+        );
+        when(courseService.getLearningPath()).thenReturn(response);
+
+        mockMvc.perform(get("/api/courses/learning-path"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nodes[0].code").value("JAVA-001"))
+                .andExpect(jsonPath("$.edges[0].fromCourseId").value(1))
+                .andExpect(jsonPath("$.edges[0].toCourseId").value(2))
+                .andExpect(jsonPath("$.topologicalOrder[1]").value(2));
     }
 }
