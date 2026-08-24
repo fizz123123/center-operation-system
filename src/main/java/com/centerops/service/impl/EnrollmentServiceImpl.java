@@ -1,5 +1,7 @@
 package com.centerops.service.impl;
 
+import com.centerops.analytics.AlertGenerator;
+import com.centerops.algorithm.MergeSort;
 import com.centerops.dto.request.EnrollmentCreateRequest;
 import com.centerops.dto.request.EnrollmentUpdateRequest;
 import com.centerops.dto.response.EnrollmentResponse;
@@ -24,6 +26,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -34,15 +38,24 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     private final PersonRepository personRepository;
     private final CourseRepository courseRepository;
     private final EnrollmentMapper enrollmentMapper;
+    private final AlertGenerator alertGenerator;
 
     @Override
     public PageResponse<EnrollmentResponse> getAll(int page, String sort, String direction) {
         validatePage(page);
+        Sort.Direction sortDirection = validateSortOptions(sort, direction);
+        if (isCourseNameSort(sort)) {
+            return sortByCourseNameAndCreatePage(
+                    enrollmentRepository.findAll(),
+                    page,
+                    sortDirection
+            );
+        }
         return PageResponse.from(
                 enrollmentRepository.findAll(PageRequest.of(
                                 page,
                                 PageResponse.DEFAULT_SIZE,
-                                buildSort(sort, direction)
+                                Sort.by(Sort.Direction.ASC, "id")
                         ))
                         .map(enrollmentMapper::toResponse)
         );
@@ -59,13 +72,21 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         if (!personRepository.existsById(personId)) {
             throw new ResourceNotFoundException("Person", personId);
         }
+        Sort.Direction sortDirection = validateSortOptions(sort, direction);
+        if (isCourseNameSort(sort)) {
+            return sortByCourseNameAndCreatePage(
+                    enrollmentRepository.findAllByPersonId(personId),
+                    page,
+                    sortDirection
+            );
+        }
         return PageResponse.from(
                 enrollmentRepository.findAllByPersonId(
                                 personId,
                                 PageRequest.of(
                                         page,
                                         PageResponse.DEFAULT_SIZE,
-                                        buildSort(sort, direction)
+                                        Sort.by(Sort.Direction.ASC, "id")
                                 )
                         )
                         .map(enrollmentMapper::toResponse)
@@ -88,7 +109,9 @@ public class EnrollmentServiceImpl implements EnrollmentService {
                 .course(course)
                 .status(EnrollmentStatus.NOT_STARTED)
                 .build();
-        return enrollmentMapper.toResponse(enrollmentRepository.save(enrollment));
+        Enrollment saved = enrollmentRepository.save(enrollment);
+        alertGenerator.synchronize(saved);
+        return enrollmentMapper.toResponse(saved);
     }
 
     @Override
@@ -111,7 +134,9 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         enrollment.setCompleteDate(target == EnrollmentStatus.COMPLETED ? LocalDate.now() : null);
         enrollment.setStatus(target);
 
-        return enrollmentMapper.toResponse(enrollmentRepository.save(enrollment));
+        Enrollment saved = enrollmentRepository.save(enrollment);
+        alertGenerator.synchronize(saved);
+        return enrollmentMapper.toResponse(saved);
     }
 
     private void validatePage(int page) {
@@ -120,7 +145,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         }
     }
 
-    private Sort buildSort(String sort, String direction) {
+    private Sort.Direction validateSortOptions(String sort, String direction) {
         Sort.Direction sortDirection;
         try {
             sortDirection = Sort.Direction.fromString(direction);
@@ -128,13 +153,50 @@ public class EnrollmentServiceImpl implements EnrollmentService {
             throw new InvalidStateException("direction must be asc or desc");
         }
 
-        if (sort == null || sort.isBlank()) {
-            return Sort.by(Sort.Direction.ASC, "id");
-        }
-        if (!"courseName".equals(sort)) {
+        if (sort != null && !sort.isBlank() && !isCourseNameSort(sort)) {
             throw new InvalidStateException("sort must be courseName");
         }
-        return Sort.by(sortDirection, "course.name")
-                .and(Sort.by(Sort.Direction.ASC, "id"));
+        return sortDirection;
+    }
+
+    private boolean isCourseNameSort(String sort) {
+        return "courseName".equals(sort);
+    }
+
+    private PageResponse<EnrollmentResponse> sortByCourseNameAndCreatePage(
+            List<Enrollment> enrollments,
+            int page,
+            Sort.Direction direction
+    ) {
+        Comparator<String> nameOrder = direction == Sort.Direction.ASC
+                ? String.CASE_INSENSITIVE_ORDER
+                : String.CASE_INSENSITIVE_ORDER.reversed();
+        Comparator<Enrollment> enrollmentOrder = Comparator
+                .comparing(
+                        (Enrollment enrollment) -> enrollment.getCourse().getName(),
+                        nameOrder
+                )
+                .thenComparing(Enrollment::getId);
+        List<Enrollment> sorted = MergeSort.sort(enrollments, enrollmentOrder);
+
+        int size = PageResponse.DEFAULT_SIZE;
+        int totalElements = sorted.size();
+        int totalPages = (totalElements + size - 1) / size;
+        long offset = (long) page * size;
+        int fromIndex = (int) Math.min(offset, totalElements);
+        int toIndex = Math.min(fromIndex + size, totalElements);
+        List<EnrollmentResponse> content = sorted.subList(fromIndex, toIndex).stream()
+                .map(enrollmentMapper::toResponse)
+                .toList();
+
+        return new PageResponse<>(
+                content,
+                page,
+                size,
+                totalElements,
+                totalPages,
+                page == 0,
+                totalPages == 0 || page >= totalPages - 1
+        );
     }
 }

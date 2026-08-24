@@ -139,6 +139,9 @@ Duplicate Exception
 - 禁止學習狀態倒退
 - `COMPLETED` 紀錄不可再次修改
 - 依課程名稱 `asc`／`desc` 排序後再分頁
+- `sort=courseName` 對完整查詢結果執行 Merge Sort，而非只排序目前頁面
+- 個人學習紀錄先依 person 篩選，再執行 Merge Sort 與分頁
+- 未指定 sort 時維持 enrollment id 升序的 Repository 分頁
 - 非法 sort 欄位或 direction 回傳 `400 BAD REQUEST`
 
 
@@ -359,6 +362,9 @@ Expected:
 - 空集合
 - 單筆資料
 - 已排序資料
+- 泛型物件清單可依 Comparator 排序
+- 相同比較值維持原始相對順序（Stable Sort）
+- 不修改呼叫端傳入的陣列或清單
 
 
 ---

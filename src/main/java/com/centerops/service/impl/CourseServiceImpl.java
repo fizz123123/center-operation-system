@@ -1,5 +1,8 @@
 package com.centerops.service.impl;
 
+import com.centerops.algorithm.DepthFirstSearch;
+import com.centerops.algorithm.TopologicalSort;
+import com.centerops.datastructure.CourseGraph;
 import com.centerops.dto.request.CourseCreateRequest;
 import com.centerops.dto.request.CourseUpdateRequest;
 import com.centerops.dto.response.AvailablePrerequisiteResponse;
@@ -28,15 +31,12 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
 import java.util.Set;
 
 @Service
@@ -88,12 +88,12 @@ public class CourseServiceImpl implements CourseService {
                 .filter(relation -> relation.getCourse().getId().equals(courseId))
                 .map(relation -> relation.getPrerequisite().getId())
                 .forEach(existingPrerequisiteIds::add);
-        Map<Long, List<Long>> adjacency = buildAdjacency(relations);
+        CourseGraph<Long> graph = buildCourseGraph(courses, relations);
 
         return courses.stream()
                 .filter(candidate -> !candidate.getId().equals(courseId))
                 .filter(candidate -> !existingPrerequisiteIds.contains(candidate.getId()))
-                .filter(candidate -> !wouldCreateCycle(courseId, candidate.getId(), adjacency))
+                .filter(candidate -> !wouldCreateCycle(graph, courseId, candidate.getId()))
                 .map(courseMapper::toAvailablePrerequisiteResponse)
                 .toList();
     }
@@ -156,7 +156,9 @@ public class CourseServiceImpl implements CourseService {
 
         Course course = findCourse(courseId);
         Course prerequisite = findCourse(prerequisiteId);
-        if (wouldCreateCycle(courseId, prerequisiteId, buildAdjacency(prerequisiteRepository.findAll()))) {
+        List<CoursePrerequisite> relations = prerequisiteRepository.findAll();
+        CourseGraph<Long> graph = buildCourseGraph(List.of(course, prerequisite), relations);
+        if (wouldCreateCycle(graph, courseId, prerequisiteId)) {
             throw new BusinessConflictException("The prerequisite relationship would create a cycle");
         }
 
@@ -183,42 +185,14 @@ public class CourseServiceImpl implements CourseService {
     public CourseGraphResponse getLearningPath() {
         List<Course> courses = courseRepository.findAll(Sort.by(Sort.Direction.ASC, "id"));
         List<CoursePrerequisite> relations = prerequisiteRepository.findAllByOrderByIdAsc();
-
-        Map<Long, Course> byId = new LinkedHashMap<>();
-        Map<Long, Integer> indegree = new LinkedHashMap<>();
-        Map<Long, List<Long>> adjacency = new HashMap<>();
-        courses.forEach(course -> {
-            byId.put(course.getId(), course);
-            indegree.put(course.getId(), 0);
-        });
-        relations.forEach(relation -> {
-            Long prerequisiteId = relation.getPrerequisite().getId();
-            Long courseId = relation.getCourse().getId();
-            adjacency.computeIfAbsent(prerequisiteId, ignored -> new ArrayList<>()).add(courseId);
-            indegree.computeIfPresent(courseId, (ignored, value) -> value + 1);
-        });
-
-        Queue<Long> ready = new ArrayDeque<>();
-        indegree.forEach((id, value) -> {
-            if (value == 0) {
-                ready.add(id);
-            }
-        });
-
-        List<Long> topologicalOrder = new ArrayList<>();
-        while (!ready.isEmpty()) {
-            Long current = ready.remove();
-            topologicalOrder.add(current);
-            for (Long dependent : adjacency.getOrDefault(current, List.of())) {
-                int remaining = indegree.computeIfPresent(dependent, (ignored, value) -> value - 1);
-                if (remaining == 0) {
-                    ready.add(dependent);
-                }
-            }
-        }
-        if (topologicalOrder.size() != courses.size()) {
+        CourseGraph<Long> graph = buildCourseGraph(courses, relations);
+        List<Long> topologicalOrder;
+        try {
+            topologicalOrder = TopologicalSort.sort(graph);
+        } catch (IllegalStateException exception) {
             throw new InvalidStateException("Course prerequisite graph contains a cycle");
         }
+
         List<CourseNodeResponse> nodes = courses.stream()
                 .map(course -> new CourseNodeResponse(course.getId(), course.getCode(), course.getName()))
                 .toList();
@@ -231,33 +205,29 @@ public class CourseServiceImpl implements CourseService {
         return new CourseGraphResponse(nodes, edges, topologicalOrder);
     }
 
-    private Map<Long, List<Long>> buildAdjacency(List<CoursePrerequisite> relations) {
-        Map<Long, List<Long>> adjacency = new HashMap<>();
-        relations.forEach(relation ->
-                adjacency.computeIfAbsent(relation.getPrerequisite().getId(), ignored -> new ArrayList<>())
-                        .add(relation.getCourse().getId())
-        );
-        return adjacency;
+    private CourseGraph<Long> buildCourseGraph(
+            Collection<Course> courses,
+            List<CoursePrerequisite> relations
+    ) {
+        CourseGraph<Long> graph = new CourseGraph<>();
+        courses.forEach(course -> graph.addVertex(course.getId()));
+        relations.forEach(relation -> {
+            graph.addVertex(relation.getPrerequisite().getId());
+            graph.addVertex(relation.getCourse().getId());
+        });
+        relations.forEach(relation -> graph.addEdge(
+                relation.getPrerequisite().getId(),
+                relation.getCourse().getId()
+        ));
+        return graph;
     }
 
     private boolean wouldCreateCycle(
+            CourseGraph<Long> graph,
             Long courseId,
-            Long prerequisiteId,
-            Map<Long, List<Long>> adjacency
+            Long prerequisiteId
     ) {
-        Queue<Long> pending = new ArrayDeque<>();
-        Set<Long> visited = new HashSet<>();
-        pending.add(courseId);
-        while (!pending.isEmpty()) {
-            Long current = pending.remove();
-            if (current.equals(prerequisiteId)) {
-                return true;
-            }
-            if (visited.add(current)) {
-                pending.addAll(adjacency.getOrDefault(current, List.of()));
-            }
-        }
-        return false;
+        return DepthFirstSearch.isReachable(graph, courseId, prerequisiteId);
     }
 
     private Map<Long, List<Long>> getPrerequisiteIds(Collection<Course> courses) {

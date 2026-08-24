@@ -533,6 +533,11 @@ Response 使用共同分頁格式，`content` 為 `EnrollmentResponse`。
 
 排序必須先套用於完整查詢結果，再切出指定頁面；不允許 Frontend 只排序目前頁面的 10 筆資料。切換排序方向時，Frontend 必須回到第 0 頁。
 
+- 未傳 `sort`：維持 Repository 依 enrollment id 升序進行資料庫分頁。
+- 傳入 `sort=courseName`：Backend 取得完整條件結果，使用自訂 `MergeSort` 依課程名稱排序，
+  相同課程名稱再依 enrollment id 升序排列，最後切出每頁 10 筆。
+- 課程名稱比較不分英文字母大小寫；`direction` 只改變課程名稱方向，id 的 tie-breaker 固定升序。
+
 
 ---
 
@@ -546,6 +551,8 @@ Request:
 GET /api/people/{personId}/enrollments?page=0
 GET /api/people/{personId}/enrollments?page=0&sort=courseName&direction=desc
 ```
+
+排序與分頁規則和 5.1 相同，但完整結果只包含指定 person 的 Enrollment。
 
 
 Response:
@@ -781,24 +788,30 @@ Priority:
 1 LOW
 ```
 
-目前 Priority 是 Alert 建立時保存的分類值，Backend 依 `priority DESC, created_at ASC` 查詢：
+Priority 是 Alert 建立時保存的分類值。Backend 先依 priority 篩選完整結果，再交由自訂 `MaxHeap` 依
+`priority DESC, created_at ASC, id ASC` 排序，最後才切出每頁 10 筆資料：
 
 - `3 HIGH`：需立即處理
 - `2 MEDIUM`：需要追蹤
 - `1 LOW`：一般提醒
 
-目前 `sample_data.sql` 的 Alert 全部是 Demo seed data，message 與 priority 均預先指定。Backend 目前只保存並排序 priority，尚未自動分析 Enrollment 產生警示。
+`sample_data.sql` 的 30 筆 Alert 是獨立的 Demo seed data，message 與 priority 均預先指定。
+透過 API 新增或更新 Enrollment 時，Backend 會同步執行 Alert Generator；自動警示使用 `[AUTO] `
+訊息前綴識別，不會覆寫 Demo seed data。
 
-目標 MVP 的 Alert Generator 規則：
+MVP 的 Alert Generator 規則：
 
 | Enrollment condition | Priority |
 |-|-:|
 | `IN_PROGRESS` 且開始已滿 90 天 | 3 |
 | `IN_PROGRESS` 且開始已滿 30 天、未滿 90 天 | 2 |
+| `IN_PROGRESS` 且開始未滿 30 天 | 不產生警示 |
 | `NOT_STARTED` | 1 |
 | `COMPLETED` | 不產生警示 |
 
-Alert Generator 負責決定是否建立警示與 priority；自訂 MaxHeap 只負責排列已判定的 Alert，不負責業務判斷。
+同一組 person 與 course 最多由 Generator 維護一筆 `[AUTO]` 警示。狀態或經過天數改變時會更新該警示；
+條件變成「不產生警示」時會移除該筆自動警示。Alert Generator 負責決定是否建立警示與 priority；
+自訂 MaxHeap 只負責排列已判定的 Alert，不負責業務判斷。
 
 
 ---
