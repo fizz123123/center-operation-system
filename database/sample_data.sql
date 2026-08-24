@@ -1,16 +1,24 @@
 -- =============================================
 -- Center Operation System
--- Sample Data
+-- Demo/Test Data Reset
 -- MySQL 8+
 --
--- This file is idempotent and may be executed in full repeatedly.
--- Existing seed rows are updated through their unique keys; rows created
--- outside this seed set are preserved.
+-- WARNING: This script deletes all application data before rebuilding a
+-- deterministic demo dataset. Use it only in local, demo, or test databases.
+-- It may be executed in full repeatedly and produces the same baseline.
 -- =============================================
 
 SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 USE center_operation;
+
+SET FOREIGN_KEY_CHECKS = 0;
+TRUNCATE TABLE alerts;
+TRUNCATE TABLE course_prerequisites;
+TRUNCATE TABLE enrollments;
+TRUNCATE TABLE courses;
+TRUNCATE TABLE persons;
+SET FOREIGN_KEY_CHECKS = 1;
 
 START TRANSACTION;
 
@@ -19,7 +27,7 @@ START TRANSACTION;
 -- 1. Persons (200 seed rows)
 --
 -- IDs 1-10 use named demo people.
--- IDs 11-200 are generated demo students.
+-- IDs 11-200 use deterministic three-character Chinese names.
 -- Every tenth person is INACTIVE.
 -- =============================================
 
@@ -45,7 +53,11 @@ SELECT
         WHEN 8 THEN '劉家豪'
         WHEN 9 THEN '蔡佩珊'
         WHEN 10 THEN '周建宏'
-        ELSE CONCAT('Demo Student ', LPAD(person_id, 3, '0'))
+        ELSE CONCAT(
+            SUBSTRING('王李張劉陳楊黃趙吳周徐孫馬朱胡郭何高林鄭', MOD(person_id - 1, 20) + 1, 1),
+            SUBSTRING('子宇俊雅家思承雨冠欣', MOD(FLOOR((person_id - 1) / 20), 10) + 1, 1),
+            SUBSTRING('豪婷軒涵傑妤恩維蓉凱', MOD(person_id + FLOOR((person_id - 1) / 20), 10) + 1, 1)
+        )
     END AS name,
     CASE person_id
         WHEN 1 THEN 'ming@example.com'
@@ -82,18 +94,9 @@ ON DUPLICATE KEY UPDATE
 --
 -- Course Graph:
 --
--- Java Basic
---      |
---      v
--- Object Oriented Programming
---      |
---      v
--- Data Structure
---      |
---      v
--- Algorithm
---
--- Database / Web / Spring / Backend
+-- Foundations branch into programming, backend, infrastructure, AI,
+-- testing and security paths. Multiple advanced paths converge on the
+-- Software Project capstone.
 -- =============================================
 
 
@@ -127,22 +130,42 @@ ON DUPLICATE KEY UPDATE
 
 
 -- =============================================
--- 3. Course prerequisites (7 seed rows)
+-- 3. Course prerequisites (26 seed rows)
 --
--- Used by CourseGraph
+-- A directed acyclic graph with branches, merges and long paths for
+-- CourseGraph, DFS cycle detection and Topological Sort demonstrations.
 -- =============================================
 
 
 INSERT INTO course_prerequisites
     (course_id, prerequisite_id)
 VALUES
-    (2, 1),  -- OOP requires Java Basic
-    (3, 2),  -- Data Structure requires OOP
-    (4, 3),  -- Algorithm requires Data Structure
-    (7, 1),  -- Spring Boot requires Java
-    (8, 7),  -- Backend requires Spring Boot
-    (8, 5),  -- Backend requires Database
-    (10, 8)  -- Cloud requires Backend
+    (2, 1),    -- OOP requires Java Basic
+    (3, 2),    -- Data Structure requires OOP
+    (4, 3),    -- Algorithm requires Data Structure
+    (7, 1),    -- Spring Boot requires Java Basic
+    (14, 6),   -- REST API Design requires Web Programming
+    (14, 2),   -- REST API Design requires OOP
+    (8, 7),    -- Backend Engineering requires Spring Boot
+    (8, 5),    -- Backend Engineering requires Database
+    (8, 14),   -- Backend Engineering requires REST API Design
+    (9, 19),   -- Artificial Intelligence requires Python Basic
+    (9, 4),    -- Artificial Intelligence requires Algorithm
+    (13, 16),  -- DevOps Fundamentals requires Git Collaboration
+    (13, 17),  -- DevOps Fundamentals requires Linux Fundamentals
+    (10, 8),   -- Cloud Computing requires Backend Engineering
+    (10, 13),  -- Cloud Computing requires DevOps Fundamentals
+    (10, 18),  -- Cloud Computing requires Computer Networks
+    (11, 8),   -- Application Security requires Backend Engineering
+    (11, 18),  -- Application Security requires Computer Networks
+    (12, 2),   -- Software Testing requires OOP
+    (12, 7),   -- Software Testing requires Spring Boot
+    (12, 16),  -- Software Testing requires Git Collaboration
+    (15, 8),   -- System Design requires Backend Engineering
+    (20, 12),  -- Software Project requires Software Testing
+    (20, 13),  -- Software Project requires DevOps Fundamentals
+    (20, 15),  -- Software Project requires System Design
+    (20, 11)   -- Software Project requires Application Security
 ON DUPLICATE KEY UPDATE
     prerequisite_id = VALUES(prerequisite_id);
 
@@ -153,50 +176,105 @@ ON DUPLICATE KEY UPDATE
 --
 -- Learning Progress Data
 --
--- 200 persons x 5 unique courses = 1,000 enrollments
--- Status distribution: 45% COMPLETED, 35% IN_PROGRESS,
--- and 20% NOT_STARTED
+-- Each person has one target course plus every direct and transitive
+-- prerequisite required by that target. All prerequisite enrollments are
+-- COMPLETED before the target course starts.
+--
+-- The target-course cohort sizes are chosen so the prerequisite closures
+-- produce exactly 1,000 enrollment rows across 200 persons.
+-- Distribution:
+-- 85% COMPLETED (all prerequisites plus 50 completed targets)
+--  5% IN_PROGRESS for 45 days (MEDIUM alert candidates)
+--  5% IN_PROGRESS for 120 days (HIGH alert candidates)
+--  5% NOT_STARTED (LOW alert candidates)
 -- =============================================
 
 
 INSERT INTO enrollments
     (person_id, course_id, status, start_date, complete_date)
+WITH RECURSIVE learning_plans AS (
+    SELECT 1 AS first_person_id, 3 AS last_person_id, 20 AS target_course_id
+    UNION ALL SELECT 4, 11, 10
+    UNION ALL SELECT 12, 23, 11
+    UNION ALL SELECT 24, 41, 15
+    UNION ALL SELECT 42, 57, 9
+    UNION ALL SELECT 58, 83, 8
+    UNION ALL SELECT 84, 104, 12
+    UNION ALL SELECT 105, 116, 14
+    UNION ALL SELECT 117, 128, 4
+    UNION ALL SELECT 129, 138, 13
+    UNION ALL SELECT 139, 148, 3
+    UNION ALL SELECT 149, 156, 2
+    UNION ALL SELECT 157, 164, 7
+    UNION ALL SELECT 165, 170, 1
+    UNION ALL SELECT 171, 175, 5
+    UNION ALL SELECT 176, 180, 6
+    UNION ALL SELECT 181, 185, 16
+    UNION ALL SELECT 186, 190, 17
+    UNION ALL SELECT 191, 195, 18
+    UNION ALL SELECT 196, 200, 19
+), course_stages AS (
+    SELECT 1 AS course_id, 1 AS stage
+    UNION ALL SELECT 5, 1
+    UNION ALL SELECT 6, 1
+    UNION ALL SELECT 16, 1
+    UNION ALL SELECT 17, 1
+    UNION ALL SELECT 18, 1
+    UNION ALL SELECT 19, 1
+    UNION ALL SELECT 2, 2
+    UNION ALL SELECT 7, 2
+    UNION ALL SELECT 13, 2
+    UNION ALL SELECT 3, 3
+    UNION ALL SELECT 12, 3
+    UNION ALL SELECT 14, 3
+    UNION ALL SELECT 4, 4
+    UNION ALL SELECT 8, 4
+    UNION ALL SELECT 9, 5
+    UNION ALL SELECT 10, 5
+    UNION ALL SELECT 11, 5
+    UNION ALL SELECT 15, 5
+    UNION ALL SELECT 20, 6
+), course_requirements AS (
+    SELECT id AS target_course_id, id AS required_course_id
+    FROM courses
+
+    UNION DISTINCT
+
+    SELECT
+        requirements.target_course_id,
+        relation.prerequisite_id
+    FROM course_requirements requirements
+    JOIN course_prerequisites relation
+        ON relation.course_id = requirements.required_course_id
+)
 SELECT
     p.id,
-    MOD((p.id - 1) + (slots.slot * 3), 20) + 1 AS course_id,
+    requirements.required_course_id AS course_id,
     CASE
-        WHEN MOD(((p.id - 1) * 5) + slots.slot, 20) < 9 THEN 'COMPLETED'
-        WHEN MOD(((p.id - 1) * 5) + slots.slot, 20) < 16 THEN 'IN_PROGRESS'
+        WHEN requirements.required_course_id <> plan.target_course_id THEN 'COMPLETED'
+        WHEN p.id <= 50 THEN 'COMPLETED'
+        WHEN p.id <= 150 THEN 'IN_PROGRESS'
         ELSE 'NOT_STARTED'
     END AS status,
     CASE
-        WHEN MOD(((p.id - 1) * 5) + slots.slot, 20) < 16
-            THEN DATE_ADD(
-                '2025-01-01',
-                INTERVAL MOD(((p.id - 1) * 5) + slots.slot, 500) DAY
-            )
+        WHEN requirements.required_course_id <> plan.target_course_id OR p.id <= 50
+            THEN DATE_SUB(CURRENT_DATE, INTERVAL (400 - (stage.stage * 40)) DAY)
+        WHEN p.id <= 100 THEN DATE_SUB(CURRENT_DATE, INTERVAL 120 DAY)
+        WHEN p.id <= 150 THEN DATE_SUB(CURRENT_DATE, INTERVAL 45 DAY)
         ELSE NULL
     END AS start_date,
     CASE
-        WHEN MOD(((p.id - 1) * 5) + slots.slot, 20) < 9
-            THEN DATE_ADD(
-                DATE_ADD(
-                    '2025-01-01',
-                    INTERVAL MOD(((p.id - 1) * 5) + slots.slot, 500) DAY
-                ),
-                INTERVAL (14 + MOD(((p.id - 1) * 5) + slots.slot, 45)) DAY
-            )
+        WHEN requirements.required_course_id <> plan.target_course_id OR p.id <= 50
+            THEN DATE_SUB(CURRENT_DATE, INTERVAL (380 - (stage.stage * 40)) DAY)
         ELSE NULL
     END AS complete_date
 FROM persons p
-CROSS JOIN (
-    SELECT 0 AS slot
-    UNION ALL SELECT 1
-    UNION ALL SELECT 2
-    UNION ALL SELECT 3
-    UNION ALL SELECT 4
-) slots
-WHERE p.id BETWEEN 1 AND 200
+JOIN learning_plans plan
+    ON p.id BETWEEN plan.first_person_id AND plan.last_person_id
+JOIN course_requirements requirements
+    ON requirements.target_course_id = plan.target_course_id
+JOIN course_stages stage
+    ON stage.course_id = requirements.required_course_id
 ON DUPLICATE KEY UPDATE
     status = VALUES(status),
     start_date = VALUES(start_date),
@@ -205,51 +283,66 @@ ON DUPLICATE KEY UPDATE
 
 
 -- =============================================
--- 5. Alerts (30 seed rows)
+-- 5. Alerts (150 enrollment-derived seed rows)
 --
--- Priority:
---
--- 3 HIGH
--- 2 MEDIUM
--- 1 LOW
---
--- Used by Max Heap
+-- Uses the same status/date thresholds as AlertGenerator.
+-- Every qualifying Enrollment gets one [AUTO] Alert so the seed data and
+-- runtime business rules remain consistent.
+-- One enrollment has at most one seed alert; a person may have alerts
+-- for multiple courses.
 -- =============================================
 
 
 INSERT INTO alerts
     (id, person_id, course_id, priority, message, is_resolved)
-VALUES
-       (1, 1, 3, 3, 'Data Structure progress is overdue', FALSE),
-       (2, 2, 2, 2, 'OOP course progress reminder', FALSE),
-       (3, 5, 8, 3, 'Backend course requires attention', FALSE),
-       (4, 7, 6, 1, 'Web course weekly reminder', FALSE),
-       (5, 8, 7, 2, 'Spring Boot course not started', FALSE),
-       (6, 10, 10, 1, 'Cloud Computing course available', FALSE),
-       (7, 11, 11, 1, 'Course general reminder', FALSE),
-       (8, 12, 12, 2, 'Course progress reminder', FALSE),
-       (9, 13, 13, 3, 'Course requires immediate attention', FALSE),
-       (10, 14, 14, 1, 'Course general reminder', FALSE),
-       (11, 15, 15, 2, 'Course progress reminder', FALSE),
-       (12, 16, 16, 3, 'Course requires immediate attention', FALSE),
-       (13, 17, 17, 1, 'Course general reminder', FALSE),
-       (14, 18, 18, 2, 'Course progress reminder', FALSE),
-       (15, 19, 19, 3, 'Course requires immediate attention', FALSE),
-       (16, 20, 20, 1, 'Course general reminder', FALSE),
-       (17, 21, 1, 2, 'Course progress reminder', FALSE),
-       (18, 22, 2, 3, 'Course requires immediate attention', FALSE),
-       (19, 23, 3, 1, 'Course general reminder', FALSE),
-       (20, 24, 4, 2, 'Course progress reminder', FALSE),
-       (21, 25, 5, 3, 'Course requires immediate attention', FALSE),
-       (22, 26, 6, 1, 'Course general reminder', FALSE),
-       (23, 27, 7, 2, 'Course progress reminder', FALSE),
-       (24, 28, 8, 3, 'Course requires immediate attention', FALSE),
-       (25, 29, 9, 1, 'Course general reminder', FALSE),
-       (26, 30, 10, 2, 'Course progress reminder', FALSE),
-       (27, 31, 11, 3, 'Course requires immediate attention', FALSE),
-       (28, 32, 12, 1, 'Course general reminder', FALSE),
-       (29, 33, 13, 2, 'Course progress reminder', FALSE),
-       (30, 34, 14, 3, 'Course requires immediate attention', FALSE)
+WITH alert_candidates AS (
+    SELECT
+        e.person_id,
+        e.course_id,
+        CASE
+            WHEN e.status = 'NOT_STARTED' THEN 1
+            WHEN DATEDIFF(CURRENT_DATE, e.start_date) >= 90 THEN 3
+            ELSE 2
+        END AS priority,
+        CASE
+            WHEN e.status = 'NOT_STARTED' THEN '[AUTO] 尚未開始課程'
+            WHEN DATEDIFF(CURRENT_DATE, e.start_date) >= 90
+                THEN CONCAT(
+                    '[AUTO] 已進行 ',
+                    DATEDIFF(CURRENT_DATE, e.start_date),
+                    ' 天，可能需要立即協助'
+                )
+            ELSE CONCAT(
+                '[AUTO] 已進行 ',
+                DATEDIFF(CURRENT_DATE, e.start_date),
+                ' 天，請關注學習進度'
+            )
+        END AS message
+    FROM enrollments e
+    WHERE e.status = 'NOT_STARTED'
+       OR (
+           e.status = 'IN_PROGRESS'
+           AND DATEDIFF(CURRENT_DATE, e.start_date) >= 30
+       )
+), ranked_alerts AS (
+    SELECT
+        person_id,
+        course_id,
+        priority,
+        message,
+        ROW_NUMBER() OVER (
+            ORDER BY priority DESC, person_id, course_id
+        ) AS alert_id
+    FROM alert_candidates
+)
+SELECT
+    alert_id AS id,
+    person_id,
+    course_id,
+    priority,
+    message,
+    FALSE AS is_resolved
+FROM ranked_alerts
 ON DUPLICATE KEY UPDATE
     person_id = VALUES(person_id),
     course_id = VALUES(course_id),
