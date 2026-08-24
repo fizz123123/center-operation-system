@@ -267,17 +267,20 @@ async function handleStatusChange(enrollment, newStatus) {
             <Badge :color="enrollmentStatusMeta(row.status).color" :label="enrollmentStatusMeta(row.status).label" :icon="enrollmentStatusMeta(row.status).icon" />
           </template>
           <template #cell-actions="{ row }">
-            <select
-              class="status-select"
-              :value="row.status"
-              :disabled="updatingId === row.id"
-              :aria-label="`更新「${row.courseName}」的學習狀態`"
-              @change="handleStatusChange(row, $event.target.value)"
-            >
-              <option v-for="option in ENROLLMENT_STATUS_OPTIONS" :key="option" :value="option">
-                {{ enrollmentStatusMeta(option).label }}
-              </option>
-            </select>
+            <div class="status-select-wrapper">
+              <select
+                class="status-select"
+                :value="row.status"
+                :disabled="updatingId === row.id || row.status === 'COMPLETED'"
+                :aria-label="`更新「${row.courseName}」的學習狀態`"
+                @change="handleStatusChange(row, $event.target.value)"
+              >
+                <option v-for="option in ENROLLMENT_STATUS_OPTIONS" :key="option" :value="option">
+                  {{ enrollmentStatusMeta(option).label }}
+                </option>
+              </select>
+              <span v-if="row.status === 'COMPLETED'" class="status-tooltip">已完成紀錄不可修改</span>
+            </div>
           </template>
         </DataTable>
       </section>
@@ -402,6 +405,12 @@ async function handleStatusChange(enrollment, newStatus) {
 }
 .page-toolbar h3 { margin: 0; font-size: var(--font-size-md); }
 
+.status-select-wrapper {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
 .status-select {
   width: 100%;                                                 /* 填滿固定寬度的儲存格，不再依選到的文字長度自己撐寬/縮窄 */
   min-height: 36px;
@@ -410,6 +419,32 @@ async function handleStatusChange(enrollment, newStatus) {
   border: 1px solid var(--color-border);
   background: var(--color-bg-surface);
   font-size: var(--font-size-sm);
+}
+
+.status-select:disabled {
+  background-color: var(--color-bg-disabled);
+  cursor: not-allowed;
+}
+
+.status-tooltip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--color-text-primary);
+  color: var(--color-text-inverse);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.status-select-wrapper:hover .status-tooltip {
+  opacity: 1;
 }
 
 .empty-note {

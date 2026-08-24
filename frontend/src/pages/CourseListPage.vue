@@ -6,7 +6,7 @@ import AppModal from '../components/common/AppModal.vue'
 import FormField from '../components/common/FormField.vue'
 import Icon from '../components/common/Icon.vue'
 import MiniStat from '../components/common/MiniStat.vue'
-import { getCourses, createCourse, updateCourse, addPrerequisite } from '../api/course.js'
+import { getCourses, createCourse, updateCourse, addPrerequisite, removePrerequisite, getAvailablePrerequisites, getCourseOptions } from '../api/course.js'
 import { useToastStore } from '../stores/toast.js'
 import { extractErrorMessage } from '../utils/errorMessage.js'
 import { debounce } from '../utils/debounce.js'
@@ -20,7 +20,6 @@ import { debounce } from '../utils/debounce.js'
 // 跟給表格顯示用的 courses（目前這一頁）分開管理，兩者用途不同、不能共用同一個變數。
 const toast = useToastStore()
 
-const ALL_COURSES_SIZE = 500                                    // 大於預期最大筆數（200+）的緩衝值，一次抓回「全部課程」給查表/勾選用
 const PAGE_SIZE = 10
 const courses = ref([])                                         // 目前這一頁的資料，給表格顯示用
 const allCourses = ref([])                                      // 全部課程，給先修標籤查名字／先修勾選清單用
@@ -61,8 +60,8 @@ async function loadCourses() {
 
 async function loadAllCourses() {
   try {
-    const result = await getCourses({ page: 0, size: ALL_COURSES_SIZE })
-    allCourses.value = result.content
+    // 使用新的 getCourseOptions API 取得不分頁的輕量資料
+    allCourses.value = await getCourseOptions()
   } catch (error) {
     toast.error(extractErrorMessage(error, '讀取課程清單失敗'))
   }
@@ -175,59 +174,56 @@ async function handleFormSubmit() {
 const isPrereqModalOpen = ref(false)
 const targetCourse = ref(null)                                 // 目前正在設定先修關係的課程
 const checkedPrereqIds = ref([])                                // Modal 內目前勾選的先修課程 id（複選）
+const availablePrerequisites = ref([])                          // 可供選擇的先修課程列表
 const isSavingPrereqs = ref(false)
 
-// 可勾選的課程：從全部課程（allCourses）裡排除自己，不能只從目前這一頁挑，不然選不到不在這一頁的課程
-const otherCourses = computed(() => {
-  if (!targetCourse.value) return []
-  return allCourses.value.filter((c) => c.id !== targetCourse.value.id)
-})
+// 可勾選的課程：從 getAvailablePrerequisites 取得
+const otherCourses = computed(() => availablePrerequisites.value)
 
-function openPrereqModal(course) {
+async function openPrereqModal(course) {
   targetCourse.value = course
   checkedPrereqIds.value = [...(course.prerequisiteIds ?? [])]  // 用複本初始化，取消勾選不會直接動到原始資料
   isPrereqModalOpen.value = true
+  try {
+    availablePrerequisites.value = await getAvailablePrerequisites(course.id)
+  } catch (error) {
+    toast.error(extractErrorMessage(error, '讀取可用先修課程失敗'))
+  }
 }
 
 function closePrereqModal() {
   isPrereqModalOpen.value = false
   targetCourse.value = null
+  availablePrerequisites.value = []
 }
 
 async function handleSavePrerequisites() {
   const original = new Set(targetCourse.value.prerequisiteIds ?? [])
   const current = new Set(checkedPrereqIds.value)
   const toAdd = [...current].filter((id) => !original.has(id))
-  const toRemoveLocally = [...original].filter((id) => !current.has(id))
-  const courseId = targetCourse.value.id
+  const toRemove = [...original].filter((id) => !current.has(id)) // 改名為 toRemove
 
-  if (toAdd.length === 0 && toRemoveLocally.length === 0) {
+  if (toAdd.length === 0 && toRemove.length === 0) {
     closePrereqModal()
     return
   }
 
   isSavingPrereqs.value = true
   try {
-    // API 規格書（§4.4）只有「新增」先修關係的端點，沒有刪除，所以只有 toAdd 會真的呼叫後端；
-    // 逐一呼叫而不是 Promise.all，是因為後端很可能要依序檢查是否會形成循環先修（Cycle），平行送出容易互相干擾判斷
+    // 處理新增
     for (const prerequisiteId of toAdd) {
       await addPrerequisite(courseId, prerequisiteId)
     }
-    if (toAdd.length > 0) {
-      await loadCourses()                                          // 有真的新增才需要重新整理列表，跟後端資料同步
-      await loadAllCourses()
+
+    // 處理移除
+    for (const prerequisiteId of toRemove) {
+      await removePrerequisite(courseId, prerequisiteId)
     }
-    if (toRemoveLocally.length > 0) {
-      // 沒有刪除 API，只能在前端本地移除顯示——這裡刻意放在 loadCourses() 之後，
-      // 不然剛整理回來的資料會把本地移除的結果蓋掉。這個移除只在這次瀏覽期間有效，
-      // 重新整理頁面後又會出現，等 Member A 補上刪除端點後這段本地邏輯就可以拿掉。
-      for (const list of [courses.value, allCourses.value]) {
-        const target = list.find((c) => c.id === courseId)
-        if (target) target.prerequisiteIds = target.prerequisiteIds.filter((id) => !toRemoveLocally.includes(id))
-      }
-    }
+
     toast.success('已更新建議先修課程設定')
     closePrereqModal()
+    await loadCourses()                                          // 重新讀取目前這一頁，確保畫面跟資料來源一致
+    await loadAllCourses()                                       // 重新讀取全部課程，確保先修標籤查表用的清單更新
   } catch (error) {
     toast.error(extractErrorMessage(error, '設定先修關係失敗，可能會造成循環先修（Cycle）'))
   } finally {
