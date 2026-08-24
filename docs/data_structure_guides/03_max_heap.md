@@ -18,6 +18,10 @@ priority 1：低優先級
 
 MaxHeap 只負責排列已經具有 priority 的資料，不負責判斷 Alert 應該是 priority 1、2 或 3。Priority 的業務判斷屬於 Alert Generator。
 
+目前 `AlertServiceImpl` 已實際使用此結構：先把符合 priority 篩選條件的完整 Alert 集合放入 Heap，
+逐一移除 root 得到全域排序結果，之後才切出指定頁面。不能先由資料庫切頁再放入 Heap，否則只能排好
+單一頁面，無法保證跨頁順序正確。
+
 ---
 
 ## 2. Heap 的兩個必要條件
@@ -404,14 +408,20 @@ priority 3 在 priority 2 與 1 之前。
 
 ```java
 Comparator<Alert> alertOrder = Comparator
-        .comparingInt(Alert::getPriority)
+        .comparing(Alert::getPriority)
         .thenComparing(
                 Alert::getCreatedAt,
-                Comparator.reverseOrder()
+                Comparator.nullsFirst(Comparator.reverseOrder())
+        )
+        .thenComparing(
+                Alert::getId,
+                Comparator.nullsFirst(Comparator.reverseOrder())
         );
 ```
 
 因為這是 MaxHeap，Comparator 認為「較大」的元素會在前面；若較早時間要被視為較大，時間比較方向需要反轉。
+相同時間時也反轉 id 的比較方向，使較小 id 先被取出。`nullsFirst` 在 MaxHeap Comparator 中代表 null
+較小，因此尚未具備時間或 id 的物件不會被誤判為最高順位。
 
 ---
 

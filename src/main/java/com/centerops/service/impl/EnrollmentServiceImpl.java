@@ -1,5 +1,6 @@
 package com.centerops.service.impl;
 
+import com.centerops.analytics.AlertGenerator;
 import com.centerops.dto.request.EnrollmentCreateRequest;
 import com.centerops.dto.request.EnrollmentUpdateRequest;
 import com.centerops.dto.response.EnrollmentResponse;
@@ -34,6 +35,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     private final PersonRepository personRepository;
     private final CourseRepository courseRepository;
     private final EnrollmentMapper enrollmentMapper;
+    private final AlertGenerator alertGenerator;
 
     @Override
     public PageResponse<EnrollmentResponse> getAll(int page, String sort, String direction) {
@@ -88,7 +90,9 @@ public class EnrollmentServiceImpl implements EnrollmentService {
                 .course(course)
                 .status(EnrollmentStatus.NOT_STARTED)
                 .build();
-        return enrollmentMapper.toResponse(enrollmentRepository.save(enrollment));
+        Enrollment saved = enrollmentRepository.save(enrollment);
+        alertGenerator.synchronize(saved);
+        return enrollmentMapper.toResponse(saved);
     }
 
     @Override
@@ -111,7 +115,9 @@ public class EnrollmentServiceImpl implements EnrollmentService {
         enrollment.setCompleteDate(target == EnrollmentStatus.COMPLETED ? LocalDate.now() : null);
         enrollment.setStatus(target);
 
-        return enrollmentMapper.toResponse(enrollmentRepository.save(enrollment));
+        Enrollment saved = enrollmentRepository.save(enrollment);
+        alertGenerator.synchronize(saved);
+        return enrollmentMapper.toResponse(saved);
     }
 
     private void validatePage(int page) {

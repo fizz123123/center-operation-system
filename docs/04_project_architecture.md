@@ -492,16 +492,20 @@ analytics/
 Alert Generator 的 MVP 規則以 Enrollment status 與 start date 判斷是否產生警示及 priority；完成判定後再交給 MaxHeap 排序。兩者責任分離：
 
 ```text
-Enrollment Repository
-↓
-Alert Generator（建立／更新 Alert，決定 priority）
-↓
+Enrollment API 寫入流程
+├─ Enrollment Repository（保存修課狀態）
+└─ Alert Generator（同步建立／更新／移除 [AUTO] Alert）
+   └─ Alert Repository
+
+Alert API 查詢流程
 Alert Repository
-↓
-MaxHeap（依 priority 排序）
-↓
-Alert／Dashboard Response DTO
+└─ MaxHeap（priority DESC、createdAt ASC、id ASC）
+   └─ 分頁（每頁 10 筆）
+      └─ Alert Response DTO
 ```
+
+Generator 在 Enrollment 建立或狀態更新成功後執行，不在 `GET /api/alerts` 時掃描或修改資料，
+因此查詢端點保持唯讀。`sample_data.sql` 的 Demo Alert 沒有 `[AUTO]` 前綴，Generator 不會修改它們。
 
 
 流程：

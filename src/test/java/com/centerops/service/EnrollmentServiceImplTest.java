@@ -1,5 +1,6 @@
 package com.centerops.service;
 
+import com.centerops.analytics.AlertGenerator;
 import com.centerops.dto.request.EnrollmentCreateRequest;
 import com.centerops.dto.request.EnrollmentUpdateRequest;
 import com.centerops.dto.response.EnrollmentResponse;
@@ -49,6 +50,9 @@ class EnrollmentServiceImplTest {
 
     @Mock
     private EnrollmentMapper enrollmentMapper;
+
+    @Mock
+    private AlertGenerator alertGenerator;
 
     @InjectMocks
     private EnrollmentServiceImpl enrollmentService;
@@ -150,6 +154,7 @@ class EnrollmentServiceImplTest {
 
         ArgumentCaptor<Enrollment> captor = ArgumentCaptor.forClass(Enrollment.class);
         verify(enrollmentRepository).save(captor.capture());
+        verify(alertGenerator).synchronize(saved);
         assertThat(captor.getValue().getStatus()).isEqualTo(EnrollmentStatus.NOT_STARTED);
         assertThat(captor.getValue().getPerson()).isSameAs(person);
         assertThat(captor.getValue().getCourse()).isSameAs(course);
@@ -188,6 +193,7 @@ class EnrollmentServiceImplTest {
         assertThat(actual.status()).isEqualTo(EnrollmentStatus.COMPLETED);
         assertThat(actual.startDate()).isEqualTo(LocalDate.now());
         assertThat(actual.completeDate()).isEqualTo(LocalDate.now());
+        verify(alertGenerator).synchronize(enrollment);
     }
 
     @Test
