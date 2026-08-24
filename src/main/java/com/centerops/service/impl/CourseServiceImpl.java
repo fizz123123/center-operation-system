@@ -186,9 +186,13 @@ public class CourseServiceImpl implements CourseService {
         List<Course> courses = courseRepository.findAll(Sort.by(Sort.Direction.ASC, "id"));
         List<CoursePrerequisite> relations = prerequisiteRepository.findAllByOrderByIdAsc();
         CourseGraph<Long> graph = buildCourseGraph(courses, relations);
+        List<List<Long>> stages;
         List<Long> topologicalOrder;
         try {
-            topologicalOrder = TopologicalSort.sort(graph);
+            stages = TopologicalSort.sortByStages(graph);
+            topologicalOrder = stages.stream()
+                    .flatMap(List::stream)
+                    .toList();
         } catch (IllegalStateException exception) {
             throw new InvalidStateException("Course prerequisite graph contains a cycle");
         }
@@ -202,7 +206,7 @@ public class CourseServiceImpl implements CourseService {
                         relation.getCourse().getId()
                 ))
                 .toList();
-        return new CourseGraphResponse(nodes, edges, topologicalOrder);
+        return new CourseGraphResponse(nodes, edges, topologicalOrder, stages);
     }
 
     private CourseGraph<Long> buildCourseGraph(

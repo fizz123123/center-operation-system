@@ -1,6 +1,7 @@
 package com.centerops.controller;
 
 import com.centerops.dto.request.EnrollmentUpdateRequest;
+import com.centerops.dto.response.CourseOptionResponse;
 import com.centerops.dto.response.PageResponse;
 import com.centerops.exception.BusinessConflictException;
 import com.centerops.exception.GlobalExceptionHandler;
@@ -65,6 +66,21 @@ class EnrollmentControllerTest {
                 .andExpect(status().isOk());
 
         verify(enrollmentService).getByPersonId(9L, 0, "courseName", "asc");
+    }
+
+    @Test
+    void getAvailableCoursesShouldReturnEligibleCourseOptions() throws Exception {
+        when(enrollmentService.getAvailableCourses(9L)).thenReturn(List.of(
+                new CourseOptionResponse(2L, "JAVA-002", "Object Oriented Programming", List.of(1L))
+        ));
+
+        mockMvc.perform(get("/api/people/9/available-courses"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(2L))
+                .andExpect(jsonPath("$[0].code").value("JAVA-002"))
+                .andExpect(jsonPath("$[0].prerequisiteIds[0]").value(1L));
+
+        verify(enrollmentService).getAvailableCourses(9L);
     }
 
     @Test

@@ -31,6 +31,22 @@ class TopologicalSortTest {
 
         assertThat(TopologicalSort.sort(graph)).contains("Database");
         assertThat(TopologicalSort.sort(new CourseGraph<>())).isEmpty();
+        assertThat(TopologicalSort.sortByStages(new CourseGraph<>())).isEmpty();
+    }
+
+    @Test
+    void groupsCoursesIntoParallelLearningStages() {
+        CourseGraph<String> graph = branchingGraph();
+
+        List<List<String>> stages = TopologicalSort.sortByStages(graph);
+
+        assertThat(stages).containsExactly(
+                List.of("Java", "Database"),
+                List.of("OOP", "Spring"),
+                List.of("Data Structure")
+        );
+        assertThatThrownBy(() -> stages.getFirst().add("Unexpected"))
+                .isInstanceOf(UnsupportedOperationException.class);
     }
 
     @Test
@@ -45,6 +61,9 @@ class TopologicalSortTest {
 
         assertThat(TopologicalSort.hasCycle(graph)).isTrue();
         assertThatThrownBy(() -> TopologicalSort.sort(graph))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cycle");
+        assertThatThrownBy(() -> TopologicalSort.sortByStages(graph))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("cycle");
     }

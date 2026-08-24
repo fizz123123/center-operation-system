@@ -3,15 +3,19 @@ package com.centerops.service;
 import com.centerops.analytics.AlertGenerator;
 import com.centerops.dto.request.EnrollmentCreateRequest;
 import com.centerops.dto.request.EnrollmentUpdateRequest;
+import com.centerops.dto.response.CourseOptionResponse;
 import com.centerops.dto.response.EnrollmentResponse;
 import com.centerops.entity.Course;
+import com.centerops.entity.CoursePrerequisite;
 import com.centerops.entity.Enrollment;
 import com.centerops.entity.EnrollmentStatus;
 import com.centerops.entity.Person;
 import com.centerops.exception.BusinessConflictException;
 import com.centerops.exception.DuplicateResourceException;
 import com.centerops.exception.InvalidStateException;
+import com.centerops.mapper.CourseMapper;
 import com.centerops.mapper.EnrollmentMapper;
+import com.centerops.repository.CoursePrerequisiteRepository;
 import com.centerops.repository.CourseRepository;
 import com.centerops.repository.EnrollmentRepository;
 import com.centerops.repository.PersonRepository;
@@ -48,6 +52,12 @@ class EnrollmentServiceImplTest {
 
     @Mock
     private CourseRepository courseRepository;
+
+    @Mock
+    private CoursePrerequisiteRepository prerequisiteRepository;
+
+    @Mock
+    private CourseMapper courseMapper;
 
     @Mock
     private EnrollmentMapper enrollmentMapper;
@@ -160,6 +170,35 @@ class EnrollmentServiceImplTest {
     }
 
     @Test
+    void getAvailableCoursesShouldReturnOnlyUnlockedAndNotEnrolledCourses() {
+        Course java = course(1L, "JAVA-001", "Java Basic");
+        Course oop = course(2L, "JAVA-002", "Object Oriented Programming");
+        Course spring = course(3L, "SPRING-001", "Spring Boot");
+        Course git = course(4L, "GIT-001", "Git Collaboration");
+        Enrollment completedJava = Enrollment.builder()
+                .id(10L)
+                .person(Person.builder().id(1L).name("Ada").build())
+                .course(java)
+                .status(EnrollmentStatus.COMPLETED)
+                .build();
+        CourseOptionResponse oopOption = new CourseOptionResponse(2L, "JAVA-002", oop.getName(), List.of(1L));
+        CourseOptionResponse gitOption = new CourseOptionResponse(4L, "GIT-001", git.getName(), List.of());
+
+        when(personRepository.existsById(1L)).thenReturn(true);
+        when(courseRepository.findAll(any(Sort.class))).thenReturn(List.of(java, oop, spring, git));
+        when(prerequisiteRepository.findAllByOrderByIdAsc()).thenReturn(List.of(
+                prerequisite(oop, java),
+                prerequisite(spring, oop)
+        ));
+        when(enrollmentRepository.findAllByPersonId(1L)).thenReturn(List.of(completedJava));
+        when(courseMapper.toOptionResponse(oop, List.of(1L))).thenReturn(oopOption);
+        when(courseMapper.toOptionResponse(git, List.of())).thenReturn(gitOption);
+
+        assertThat(enrollmentService.getAvailableCourses(1L))
+                .containsExactly(oopOption, gitOption);
+    }
+
+    @Test
     void createShouldEnrollPersonWithNotStartedStatus() {
         EnrollmentCreateRequest request = new EnrollmentCreateRequest(1L, 2L);
         Person person = Person.builder().id(1L).name("Ada").build();
@@ -196,6 +235,37 @@ class EnrollmentServiceImplTest {
         assertThatThrownBy(() -> enrollmentService.create(request))
                 .isInstanceOf(DuplicateResourceException.class)
                 .hasMessageContaining("already enrolled");
+
+        verify(enrollmentRepository, never()).save(any(Enrollment.class));
+    }
+
+    @Test
+    void createShouldRejectWhenTransitivePrerequisiteIsIncomplete() {
+        EnrollmentCreateRequest request = new EnrollmentCreateRequest(1L, 3L);
+        Person person = Person.builder().id(1L).name("Ada").build();
+        Course java = course(1L, "JAVA-001", "Java Basic");
+        Course oop = course(2L, "JAVA-002", "Object Oriented Programming");
+        Course spring = course(3L, "SPRING-001", "Spring Boot");
+        Enrollment completedOop = Enrollment.builder()
+                .id(10L)
+                .person(person)
+                .course(oop)
+                .status(EnrollmentStatus.COMPLETED)
+                .build();
+
+        when(enrollmentRepository.existsByPersonIdAndCourseId(1L, 3L)).thenReturn(false);
+        when(personRepository.findById(1L)).thenReturn(Optional.of(person));
+        when(courseRepository.findById(3L)).thenReturn(Optional.of(spring));
+        when(courseRepository.findAll(any(Sort.class))).thenReturn(List.of(java, oop, spring));
+        when(prerequisiteRepository.findAllByOrderByIdAsc()).thenReturn(List.of(
+                prerequisite(oop, java),
+                prerequisite(spring, oop)
+        ));
+        when(enrollmentRepository.findAllByPersonId(1L)).thenReturn(List.of(completedOop));
+
+        assertThatThrownBy(() -> enrollmentService.create(request))
+                .isInstanceOf(BusinessConflictException.class)
+                .hasMessageContaining("JAVA-001");
 
         verify(enrollmentRepository, never()).save(any(Enrollment.class));
     }
@@ -284,6 +354,17 @@ class EnrollmentServiceImplTest {
                 .person(person)
                 .course(course)
                 .status(EnrollmentStatus.NOT_STARTED)
+                .build();
+    }
+
+    private Course course(Long id, String code, String name) {
+        return Course.builder().id(id).code(code).name(name).build();
+    }
+
+    private CoursePrerequisite prerequisite(Course course, Course prerequisite) {
+        return CoursePrerequisite.builder()
+                .course(course)
+                .prerequisite(prerequisite)
                 .build();
     }
 }

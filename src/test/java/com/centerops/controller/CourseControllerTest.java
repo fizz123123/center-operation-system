@@ -132,7 +132,8 @@ class CourseControllerTest {
                         new CourseNodeResponse(2L, "OOP-001", "OOP")
                 ),
                 List.of(new CourseEdgeResponse(1L, 2L)),
-                List.of(1L, 2L)
+                List.of(1L, 2L),
+                List.of(List.of(1L), List.of(2L))
         );
         when(courseService.getLearningPath()).thenReturn(response);
 
@@ -141,6 +142,8 @@ class CourseControllerTest {
                 .andExpect(jsonPath("$.nodes[0].code").value("JAVA-001"))
                 .andExpect(jsonPath("$.edges[0].fromCourseId").value(1))
                 .andExpect(jsonPath("$.edges[0].toCourseId").value(2))
-                .andExpect(jsonPath("$.topologicalOrder[1]").value(2));
+                .andExpect(jsonPath("$.topologicalOrder[1]").value(2))
+                .andExpect(jsonPath("$.stages[0][0]").value(1))
+                .andExpect(jsonPath("$.stages[1][0]").value(2));
     }
 }

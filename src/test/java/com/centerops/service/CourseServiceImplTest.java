@@ -267,6 +267,10 @@ class CourseServiceImplTest {
         assertThat(response.nodes()).extracting("id").containsExactly(1L, 2L, 3L);
         assertThat(response.edges()).containsExactly(new CourseEdgeResponse(1L, 2L));
         assertThat(response.topologicalOrder()).containsExactly(1L, 3L, 2L);
+        assertThat(response.stages()).containsExactly(
+                List.of(1L, 3L),
+                List.of(2L)
+        );
         assertThat(response.topologicalOrder().indexOf(1L))
                 .isLessThan(response.topologicalOrder().indexOf(2L));
     }

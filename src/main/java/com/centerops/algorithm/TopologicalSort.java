@@ -33,11 +33,33 @@ public final class TopologicalSort {
      * @throws IllegalStateException 當 graph 含有 cycle
      */
     public static <T> List<T> sort(CourseGraph<T> graph) {
+        List<T> result = new ArrayList<>();
+        for (List<T> stage : sortByStages(graph)) {
+            result.addAll(stage);
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * 依照先修關係將課程分成可平行學習的拓樸階段
+     *
+     * <p>每一輪會取出當下所有 indegree 為 0 的頂點作為同一階段，再一起移除
+     * 它們的出邊。因此同一階段的課程彼此沒有尚未完成的先修依賴，下一階段
+     * 則只會在必要的前置階段完成後出現。</p>
+     *
+     * @param graph 要分組的課程圖，不可為 {@code null}
+     * @param <T> 圖中頂點的型別
+     * @return 不可修改的階段清單；內層清單同樣不可修改
+     * @throws NullPointerException 當 graph 為 {@code null}
+     * @throws IllegalStateException 當 graph 含有 cycle
+     */
+    public static <T> List<List<T>> sortByStages(CourseGraph<T> graph) {
         Objects.requireNonNull(graph, "graph must not be null");
 
-        List<T> result = new ArrayList<>();
+        List<List<T>> stages = new ArrayList<>();
         Queue<T> ready = new ArrayDeque<>();
         CustomHashTable<T, Integer> remainingIndegrees = new CustomHashTable<>();
+        int processedCount = 0;
 
         for (T vertex : graph.vertices()) {
             int indegree = graph.indegreeOf(vertex);
@@ -48,22 +70,30 @@ public final class TopologicalSort {
         }
 
         while (!ready.isEmpty()) {
-            T current = ready.remove();
-            result.add(current);
+            int stageSize = ready.size();
+            List<T> stage = new ArrayList<>(stageSize);
 
-            for (T dependent : graph.neighborsOf(current)) {
-                int remaining = remainingIndegrees.get(dependent) - 1;
-                remainingIndegrees.put(dependent, remaining);
-                if (remaining == 0) {
-                    ready.add(dependent);
+            for (int index = 0; index < stageSize; index++) {
+                T current = ready.remove();
+                stage.add(current);
+                processedCount++;
+
+                for (T dependent : graph.neighborsOf(current)) {
+                    int remaining = remainingIndegrees.get(dependent) - 1;
+                    remainingIndegrees.put(dependent, remaining);
+                    if (remaining == 0) {
+                        ready.add(dependent);
+                    }
                 }
             }
+
+            stages.add(List.copyOf(stage));
         }
 
-        if (result.size() != graph.vertexCount()) {
+        if (processedCount != graph.vertexCount()) {
             throw new IllegalStateException("Course graph contains a cycle");
         }
-        return List.copyOf(result);
+        return List.copyOf(stages);
     }
 
     /**

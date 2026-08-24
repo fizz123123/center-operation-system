@@ -42,7 +42,7 @@ class AlertGeneratorTest {
         verify(alertRepository).save(captor.capture());
         Alert saved = captor.getValue();
         assertThat(saved.getPriority()).isEqualTo(1);
-        assertThat(saved.getMessage()).isEqualTo("[AUTO] Java has not started");
+        assertThat(saved.getMessage()).isEqualTo("[AUTO] 尚未開始課程");
         assertThat(saved.getPerson()).isSameAs(enrollment.getPerson());
         assertThat(saved.getCourse()).isSameAs(enrollment.getCourse());
         assertThat(saved.isResolved()).isFalse();
@@ -61,7 +61,7 @@ class AlertGeneratorTest {
         ArgumentCaptor<Alert> captor = ArgumentCaptor.forClass(Alert.class);
         verify(alertRepository).save(captor.capture());
         assertThat(captor.getValue().getPriority()).isEqualTo(2);
-        assertThat(captor.getValue().getMessage()).contains("30 days");
+        assertThat(captor.getValue().getMessage()).contains("已進行 30 天");
     }
 
     @Test
@@ -84,7 +84,7 @@ class AlertGeneratorTest {
 
         verify(alertRepository).save(existing);
         assertThat(existing.getPriority()).isEqualTo(3);
-        assertThat(existing.getMessage()).contains("90 days");
+        assertThat(existing.getMessage()).contains("已進行 90 天");
         assertThat(existing.isResolved()).isFalse();
     }
 

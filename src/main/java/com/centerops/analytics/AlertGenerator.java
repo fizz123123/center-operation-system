@@ -15,8 +15,8 @@ import java.util.Optional;
  * 根據修課狀態與開始日期，自動建立、更新或移除系統警示。
  *
  * <p>此類別只負責判斷警示內容與 priority；警示清單的排序由
- * {@code MaxHeap} 負責。自動警示以固定前綴識別，因此不會修改
- * {@code sample_data.sql} 建立的 Demo 警示。</p>
+ * {@code MaxHeap} 負責。系統維護的警示以固定前綴識別；
+ * {@code sample_data.sql} 也使用相同規則建立可由 Runtime 繼續同步的基準資料。</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -74,7 +74,7 @@ public class AlertGenerator {
 
     private AlertRuleResult evaluate(Enrollment enrollment, LocalDate today) {
         if (enrollment.getStatus() == EnrollmentStatus.NOT_STARTED) {
-            return new AlertRuleResult(1, courseName(enrollment) + " has not started");
+            return new AlertRuleResult(1, "尚未開始課程");
         }
         if (enrollment.getStatus() != EnrollmentStatus.IN_PROGRESS
                 || enrollment.getStartDate() == null) {
@@ -85,20 +85,16 @@ public class AlertGenerator {
         if (elapsedDays >= HIGH_PRIORITY_DAYS) {
             return new AlertRuleResult(
                     3,
-                    courseName(enrollment) + " has been in progress for " + elapsedDays + " days"
+                    "已進行 " + elapsedDays + " 天，可能需要立即協助"
             );
         }
         if (elapsedDays >= MEDIUM_PRIORITY_DAYS) {
             return new AlertRuleResult(
                     2,
-                    courseName(enrollment) + " has been in progress for " + elapsedDays + " days"
+                    "已進行 " + elapsedDays + " 天，請關注學習進度"
             );
         }
         return null;
-    }
-
-    private String courseName(Enrollment enrollment) {
-        return enrollment.getCourse().getName();
     }
 
     private record AlertRuleResult(int priority, String message) {
