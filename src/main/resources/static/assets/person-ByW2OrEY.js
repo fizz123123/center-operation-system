@@ -1,1 +1,0 @@
-import{i as e,r as t}from"./toast-DfiRxQVH.js";function n(n={}){return t(()=>e.get(`/people`,{params:n}))}function r(n){return t(()=>e.get(`/people/${n}`))}function i(n){return t(()=>e.post(`/people`,n))}function a(n,r){return t(()=>e.put(`/people/${n}`,r))}function o(n,r={}){return t(()=>e.get(`/people/${n}/enrollments`,{params:r}))}export{a,o as i,n,r,i as t};

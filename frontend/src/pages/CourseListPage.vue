@@ -177,8 +177,17 @@ const checkedPrereqIds = ref([])                                // Modal 內目�
 const availablePrerequisites = ref([])                          // 可供選擇的先修課程列表
 const isSavingPrereqs = ref(false)
 
-// 可勾選的課程：從 getAvailablePrerequisites 取得
-const otherCourses = computed(() => availablePrerequisites.value)
+// 可新增的候選由後端排除 Cycle；既有先修課程則從 allCourses 補回清單，
+// 讓使用者仍能看到已勾選項目並取消設定。
+const otherCourses = computed(() => {
+  const existingIds = new Set(targetCourse.value?.prerequisiteIds ?? [])
+  const existingPrerequisites = allCourses.value.filter((course) => existingIds.has(course.id))
+  const coursesById = new Map(
+    [...existingPrerequisites, ...availablePrerequisites.value]
+      .map((course) => [course.id, course]),
+  )
+  return [...coursesById.values()].sort((first, second) => first.id - second.id)
+})
 
 async function openPrereqModal(course) {
   targetCourse.value = course
@@ -198,6 +207,9 @@ function closePrereqModal() {
 }
 
 async function handleSavePrerequisites() {
+  if (!targetCourse.value) return
+
+  const courseId = targetCourse.value.id
   const original = new Set(targetCourse.value.prerequisiteIds ?? [])
   const current = new Set(checkedPrereqIds.value)
   const toAdd = [...current].filter((id) => !original.has(id))
