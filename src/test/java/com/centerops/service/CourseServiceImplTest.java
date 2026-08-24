@@ -5,6 +5,7 @@ import com.centerops.dto.response.AvailablePrerequisiteResponse;
 import com.centerops.dto.response.CourseOptionResponse;
 import com.centerops.dto.response.CourseEdgeResponse;
 import com.centerops.dto.response.CourseGraphResponse;
+import com.centerops.dto.response.CoursePrerequisiteResponse;
 import com.centerops.dto.response.CourseResponse;
 import com.centerops.entity.Course;
 import com.centerops.entity.CoursePrerequisite;
@@ -157,6 +158,34 @@ class CourseServiceImplTest {
     }
 
     @Test
+    void addPrerequisiteShouldSaveRelationshipWhenGraphRemainsAcyclic() {
+        Course java = course(1L, "JAVA-001", "Java");
+        Course database = course(2L, "DB-001", "Database");
+        CoursePrerequisite saved = CoursePrerequisite.builder()
+                .id(10L)
+                .course(java)
+                .prerequisite(database)
+                .build();
+        CoursePrerequisiteResponse expected = new CoursePrerequisiteResponse(
+                10L,
+                1L,
+                "Java",
+                2L,
+                "Database"
+        );
+
+        when(prerequisiteRepository.existsByCourseIdAndPrerequisiteId(1L, 2L)).thenReturn(false);
+        when(courseRepository.findById(1L)).thenReturn(Optional.of(java));
+        when(courseRepository.findById(2L)).thenReturn(Optional.of(database));
+        when(prerequisiteRepository.findAll()).thenReturn(List.of());
+        when(prerequisiteRepository.save(any(CoursePrerequisite.class))).thenReturn(saved);
+        when(prerequisiteMapper.toResponse(saved)).thenReturn(expected);
+
+        assertThat(courseService.addPrerequisite(1L, 2L)).isEqualTo(expected);
+        verify(prerequisiteRepository).save(any(CoursePrerequisite.class));
+    }
+
+    @Test
     void getOptionsShouldIncludePrerequisiteIds() {
         Course java = course(1L, "JAVA-001", "Java");
         Course oop = course(2L, "OOP-001", "OOP");
@@ -240,6 +269,28 @@ class CourseServiceImplTest {
         assertThat(response.topologicalOrder()).containsExactly(1L, 3L, 2L);
         assertThat(response.topologicalOrder().indexOf(1L))
                 .isLessThan(response.topologicalOrder().indexOf(2L));
+    }
+
+    @Test
+    void getLearningPathShouldRejectGraphContainingCycle() {
+        Course first = course(1L, "A-001", "A");
+        Course second = course(2L, "B-001", "B");
+        CoursePrerequisite firstToSecond = CoursePrerequisite.builder()
+                .course(second)
+                .prerequisite(first)
+                .build();
+        CoursePrerequisite secondToFirst = CoursePrerequisite.builder()
+                .course(first)
+                .prerequisite(second)
+                .build();
+
+        when(courseRepository.findAll(any(Sort.class))).thenReturn(List.of(first, second));
+        when(prerequisiteRepository.findAllByOrderByIdAsc())
+                .thenReturn(List.of(firstToSecond, secondToFirst));
+
+        assertThatThrownBy(courseService::getLearningPath)
+                .isInstanceOf(InvalidStateException.class)
+                .hasMessageContaining("cycle");
     }
 
     private Course course(Long id, String code, String name) {
