@@ -382,19 +382,32 @@ COMPLETED
 
 目前 `database/sample_data.sql` 提供：
 
+> `sample_data.sql` 是本機／Demo／測試用的資料重置腳本。每次執行會清空現有業務資料、重設流水號並重建
+> 下列固定資料集，不可在正式環境或需要保留資料的資料庫執行。
+
 | Data | Count |
 |-|-:|
 | Person | 200 |
 | Course | 20 |
 | Enrollment | 1000 |
-| Course Prerequisite | 7 |
-| Alert | 30 |
+| Course Prerequisite | 26 |
+| Alert | 150 |
 
 此資料量足以展示人員與課程查詢、註冊狀態、Dashboard 統計、Course Graph 與 Alert Priority Queue。
+200 名 Person 全部使用不重複的三字中文姓名；前 10 名為固定展示姓名，其餘姓名由 SQL 確定性產生，
+確保不同組員重跑資料腳本後仍得到一致內容。
 
-目前 30 筆 Alert 是可重複載入的 Demo seed data，message 與 priority 均由 SQL 預先指定，並非由 Enrollment 自動分析產生。
+1,000 筆 Enrollment 由 200 名學員各自的「目標課程」與其完整先修閉包組成。每位學員若已註冊某門
+進階課程，該課程所有直接與間接先修都必定存在且為 `COMPLETED`，完成日期也早於後續課程。
+狀態分布為 85% `COMPLETED`、5% 進行 30–89 天、5% 進行 90 天以上及 5% `NOT_STARTED`。
+其中前 50 名的目標課程已完成，其餘三組各 50 名分別用來展示高、中、低優先權警示。
 
-目標 MVP 由 Alert Generator 掃描 Enrollment 並建立或更新警示，採用不擴充 schema 的確定性規則：
+150 筆 Alert 由 SQL 按照 Enrollment 的 status 與 start date 推導，高、中、低優先權各 50 筆。每筆符合
+條件的 Enrollment 都會建立一筆 `[AUTO]` Alert；重複執行整份腳本會先清除舊資料再建立相同基準，方便
+整合測試與 Demo 重現。
+這些資料使用與 Runtime Alert Generator 相同的門檻，讓 Demo 中的人員、課程、修課狀況與警示內容一致。
+
+Runtime Alert Generator 在 Enrollment 新增或更新時建立、更新或移除警示，採用不擴充 schema 的確定性規則：
 
 | Enrollment condition | Alert priority |
 |-|-:|
@@ -408,17 +421,21 @@ Alert Generator 負責判斷是否產生警示及 priority；自訂 MaxHeap 接�
 
 ## Graph Data
 
-正常：
+Sample Data 使用 20 個節點與 26 條邊形成 DAG，包含長路徑、分支與匯合。例如：
 
 ```text
-Java
- ↓
-OOP
- ↓
-Data Structure
- ↓
-Algorithm
+Java Basic → OOP → Data Structure → Algorithm → Artificial Intelligence
+     │          └→ REST API Design ─┐
+     └→ Spring Boot ────────────────┼→ Backend Engineering
+Database ───────────────────────────┘          ├→ Cloud Computing
+                                               ├→ Application Security ─┐
+Git + Linux → DevOps Fundamentals ─────────────┤                       │
+OOP + Spring Boot + Git → Software Testing ────┼→ Software Project     │
+Backend Engineering → System Design ───────────┤                       │
+Computer Networks → Application Security ──────┘───────────────────────┘
 ```
+
+拓樸排序只保證先修課程位於依賴課程之前，不代表結果中相鄰兩門課一定有直接關係。
 
 
 Cycle Detection 的負向測試情境：

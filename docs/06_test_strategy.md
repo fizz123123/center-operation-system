@@ -134,6 +134,8 @@ Duplicate Exception
 
 - 正常註冊
 - 重複註冊
+- 可註冊課程排除已註冊項目，以及直接或間接先修尚未完成的課程
+- 即使繞過 Frontend 直接呼叫註冊 API，先修尚未完成仍回傳 `409 CONFLICT`
 - 狀態更新
 - 完成課程時寫入開始與完成日期
 - 禁止學習狀態倒退
@@ -143,6 +145,9 @@ Duplicate Exception
 - 個人學習紀錄先依 person 篩選，再執行 Merge Sort 與分頁
 - 未指定 sort 時維持 enrollment id 升序的 Repository 分頁
 - 非法 sort 欄位或 direction 回傳 `400 BAD REQUEST`
+
+Demo SQL 額外以遞迴先修閉包驗證 1,000 筆 Enrollment；任何已註冊課程的直接與間接先修都必須存在且為
+`COMPLETED`，先修完成日期也必須早於後續課程開始日期。
 
 
 ---
@@ -163,7 +168,7 @@ Duplicate Exception
 - priority 不在 1–3 時回傳 `400 BAD REQUEST`
 - Alert Generator 依 Enrollment status 與 start date 產生正確 priority
 - `COMPLETED` 不產生警示
-- Demo seed data 與自動產生警示的測試資料明確分離
+- SQL 基準警示與 Runtime Generator 使用相同 `[AUTO]` 識別規則，更新時不產生重複資料
 
 
 ---
@@ -290,8 +295,9 @@ Detect Cycle。
 其他案例：
 
 - 分支 Graph 可產生合法拓樸順序
-- 不相連節點仍包含在 nodes 與 topologicalOrder
-- `nodes`、`edges` 與 `topologicalOrder` 的 ID 均能互相對應
+- 不相連節點仍包含在 nodes、topologicalOrder 與 stages
+- `nodes`、`edges`、`topologicalOrder` 與 `stages` 的 ID 均能互相對應
+- stages 同一組可平行學習，所有先修節點都位於依賴節點的較早階段
 - 拓樸排序中相鄰節點不必存在直接 edge
 
 
@@ -510,7 +516,7 @@ Learning Path API
 
 另外確認：
 
-- Graph API 回傳 `nodes`、`edges`、`topologicalOrder`
+- Graph API 回傳 `nodes`、`edges`、`topologicalOrder`、`stages`
 - 每條 edge 的先修節點出現在依賴節點之前
 - 分支關係不會被誤判為單一鏈狀路徑
 - 新增會形成 Cycle 的關係回傳 `409 CONFLICT`
@@ -712,11 +718,11 @@ Expected:
 
 功能完成條件：
 
-- [ ] Code 完成
-- [ ] Unit Test 通過
-- [ ] API 可正常呼叫
-- [ ] 文件更新
-- [ ] Demo Flow 可執行
+- [x] Code 完成
+- [x] Unit Test 通過（85 項）
+- [x] API 可正常呼叫
+- [x] 文件更新
+- [x] Demo Flow 可執行
 
 
 ---

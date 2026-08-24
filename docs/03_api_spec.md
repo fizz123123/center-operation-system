@@ -9,7 +9,7 @@
 - ResponseEntity 統一回傳
 - HTTP Status Code 正確使用
 
-本文件描述整合測試會議確認後的目標 API 契約。若目前程式尚未支援本文件新增的查詢參數、DTO 或端點，應視為待實作項目，通過 `docs/06_test_strategy.md` 對應測試後才算完成。
+本文件描述目前已實作並通過測試的 API 契約；Frontend、測試與後續修改皆應以此文件為準。
 
 
 API Flow:
@@ -131,8 +131,8 @@ Query Parameters:
   "content": [
     {
     "id":1,
-    "name":"Brian",
-    "email":"test@example.com",
+    "name":"王小明",
+    "email":"ming@example.com",
     "phone":"0912345678",
     "status":"ACTIVE"
     }
@@ -178,8 +178,8 @@ Response:
 ```json
 {
 "id":1,
-"name":"Brian",
-"email":"test@example.com"
+"name":"王小明",
+"email":"ming@example.com"
 }
 ```
 
@@ -214,8 +214,8 @@ Request Body:
 
 ```json
 {
-"name":"Brian",
-"email":"test@example.com",
+"name":"王小明",
+"email":"ming@example.com",
 "phone":"0912345678"
 }
 ```
@@ -233,8 +233,8 @@ Response:
 ```json
 {
 "id":1,
-"name":"Brian",
-"email":"test@example.com",
+"name":"王小明",
+"email":"ming@example.com",
 "status":"ACTIVE"
 }
 ```
@@ -263,7 +263,7 @@ Request:
 
 ```json
 {
-"name":"Brian Lin",
+"name":"王大明",
 "phone":"0987654321"
 }
 ```
@@ -326,7 +326,7 @@ Response:
   "content": [
     {
       "id":1,
-      "code":"JAVA01",
+      "code":"JAVA-001",
       "name":"Java Basic",
       "description":"Java introduction",
       "prerequisiteIds":[]
@@ -344,7 +344,18 @@ Response:
 
 ---
 
-## 4.2 新增課程
+## 4.2 查詢單一課程
+
+```http
+GET /api/courses/{id}
+```
+
+成功回傳完整 `CourseResponse`；不存在時回傳 `404 NOT FOUND`。
+
+
+---
+
+## 4.3 新增課程
 
 
 Request:
@@ -358,7 +369,7 @@ Request DTO:
 
 ```json
 {
-"code":"JAVA01",
+"code":"JAVA-001",
 "name":"Java Basic",
 "description":"Java introduction"
 }
@@ -370,7 +381,7 @@ Response:
 ```json
 {
   "id":1,
-  "code":"JAVA01",
+  "code":"JAVA-001",
   "name":"Java Basic",
   "description":"Java introduction",
   "prerequisiteIds":[]
@@ -387,7 +398,7 @@ Status:
 
 ---
 
-## 4.3 修改課程
+## 4.4 修改課程
 
 
 Request:
@@ -399,7 +410,7 @@ PUT /api/courses/{id}
 
 ---
 
-## 4.4 建立課程先修關係
+## 4.5 建立課程先修關係
 
 
 用途：
@@ -451,7 +462,7 @@ Backend 必須再次驗證：
 
 ---
 
-## 4.5 移除課程先修關係
+## 4.6 移除課程先修關係
 
 ```http
 DELETE /api/courses/{courseId}/prerequisites/{prerequisiteId}
@@ -462,7 +473,7 @@ DELETE /api/courses/{courseId}/prerequisites/{prerequisiteId}
 
 ---
 
-## 4.6 查詢可用先修課程
+## 4.7 查詢可用先修課程
 
 ```http
 GET /api/courses/{courseId}/available-prerequisites
@@ -474,7 +485,7 @@ Response:
 [
   {
     "id": 2,
-    "code": "CS102",
+    "code": "JAVA-002",
     "name": "Object Oriented Programming"
   }
 ]
@@ -485,7 +496,7 @@ Backend 應排除課程自己、已存在的先修課程，以及新增後會形
 
 ---
 
-## 4.7 查詢課程選項
+## 4.8 查詢課程選項
 
 提供不分頁的輕量資料，供學習路徑頁下拉選單及直接關係顯示使用；不以任意大的 `size` 規避分頁限制。
 
@@ -499,7 +510,7 @@ Response:
 [
   {
     "id": 1,
-    "code": "JAVA01",
+    "code": "JAVA-001",
     "name": "Java Basic",
     "prerequisiteIds": []
   }
@@ -577,7 +588,35 @@ Response:
 
 ---
 
-## 5.3 註冊課程
+## 5.3 查詢學員可註冊課程
+
+
+Request:
+
+```http
+GET /api/people/{personId}/available-courses
+```
+
+只回傳學員尚未註冊，且所有直接與間接先修課程皆為 `COMPLETED` 的課程。
+後端以課程先修 Graph 搭配 DFS 判斷可達的所有先修課程；回傳順序依 course id 升序。
+
+Response:
+
+```json
+[
+  {
+    "id": 2,
+    "code": "JAVA-002",
+    "name": "Object Oriented Programming",
+    "prerequisiteIds": [1]
+  }
+]
+```
+
+
+---
+
+## 5.4 註冊課程
 
 
 Request:
@@ -613,10 +652,13 @@ Status:
 201 CREATED
 ```
 
+註冊時後端會再次驗證直接與間接先修課程，避免繞過前端直接呼叫 API。
+若仍有先修課程尚未完成，回傳 `409 CONFLICT`，且不建立修課紀錄。
+
 
 ---
 
-## 5.4 更新學習狀態
+## 5.5 更新學習狀態
 
 
 Request:
@@ -672,7 +714,7 @@ Response:
 "totalPeople":200,
 "totalCourses":20,
 "totalEnrollments":1000,
-"completionRate":45.0
+"completionRate":85.0
 }
 ```
 
@@ -699,12 +741,12 @@ Response:
   "nodes": [
     {
       "id": 1,
-      "code": "JAVA01",
+      "code": "JAVA-001",
       "name": "Java Basic"
     },
     {
       "id": 2,
-      "code": "OOP01",
+      "code": "JAVA-002",
       "name": "Object Oriented Programming"
     }
   ],
@@ -714,19 +756,24 @@ Response:
       "toCourseId": 2
     }
   ],
-  "topologicalOrder": [1, 2]
+  "topologicalOrder": [1, 2],
+  "stages": [
+    [1],
+    [2]
+  ]
 }
 ```
 
-邊的方向固定為「先修課程 → 依賴它的課程」。`topologicalOrder` 是一組合法順序，不代表唯一答案，也不表示陣列中每兩個相鄰節點存在直接先修關係。
+邊的方向固定為「先修課程 → 依賴它的課程」。`topologicalOrder` 是一組合法順序，不代表唯一答案，也不表示陣列中每兩個相鄰節點存在直接先修關係。`stages` 由 Kahn's Algorithm 每一輪當下所有 indegree 為 0 的課程組成；同一內層陣列可平行學習，後續階段則需等待必要先修階段完成。
 
 
 用途：
 
 - `nodes` 與 `edges`：顯示真正的 Course Graph 關係
-- `topologicalOrder`：顯示一組可行的建議修課順序
+- `topologicalOrder`：保留一組向後相容的合法線性順序
+- `stages`：以前端容易理解的階段呈現可平行學習的課程
 
-若 Frontend 以線性清單顯示拓樸排序，標題應使用「一組可行的建議修課順序」，不得用連續箭頭暗示相鄰課程具有直接依賴。
+Frontend 應優先使用 `stages` 分組顯示，不得用連續箭頭或全域流水號暗示不同分支之間存在直接依賴。
 
 BFS 與 DFS 由演算法模組獨立提供及測試；本端點不宣稱回傳 BFS／DFS 結果。
 
@@ -763,15 +810,20 @@ Response:
   "content": [
     {
       "id":1,
+      "personId":1,
+      "personName":"王小明",
+      "courseId":3,
+      "courseName":"Data Structure",
       "priority":3,
-      "message":"Course unfinished",
-      "resolved":false
+      "message":"學習進度嚴重落後，可能需要立即協助",
+      "resolved":false,
+      "createdAt":"2026-08-24T10:30:00"
     }
   ],
   "page":0,
   "size":10,
-  "totalElements":30,
-  "totalPages":3,
+  "totalElements":150,
+  "totalPages":15,
   "first":true,
   "last":false
 }
@@ -795,9 +847,18 @@ Priority 是 Alert 建立時保存的分類值。Backend 先依 priority 篩選�
 - `2 MEDIUM`：需要追蹤
 - `1 LOW`：一般提醒
 
-`sample_data.sql` 的 30 筆 Alert 是獨立的 Demo seed data，message 與 priority 均預先指定。
+`sample_data.sql` 會按照 Enrollment 的 status 與 start date，以相同門檻為每筆符合條件的 Enrollment
+建立 `[AUTO]` Alert；目前共 150 筆，高、中、低優先權各 50 筆，方便展示 MaxHeap 全域排序與跨頁分頁。
+此腳本每次執行都會重置全部業務資料，僅供本機、Demo 與測試環境使用。
 透過 API 新增或更新 Enrollment 時，Backend 會同步執行 Alert Generator；自動警示使用 `[AUTO] `
-訊息前綴識別，不會覆寫 Demo seed data。
+訊息前綴識別。SQL 建立的 150 筆基準警示也使用相同前綴，因此後續 Enrollment 更新時，Runtime Generator
+能更新或移除同一組 person/course 的既有警示，不會產生重複資料。
+
+Alert 的人員與課程應由 `personName`、`courseName` 等結構化欄位呈現；`message` 只描述需要關注的狀況，
+避免把可能變動的姓名或課程名稱寫死在訊息文字中。
+
+`[AUTO] ` 是 Backend 在未擴充 `source` 欄位前辨識系統警示的內部前綴。API 保留原始 message，Frontend
+顯示時會隱藏此前綴，不向使用者呈現技術標記。
 
 MVP 的 Alert Generator 規則：
 
@@ -823,15 +884,11 @@ MVP 的 Alert Generator 規則：
 
 
 ```java
-class PersonCreateRequest {
-
-String name;
-
-String email;
-
-String phone;
-
-}
+record PersonCreateRequest(
+    String name,
+    String email,
+    String phone
+) {}
 ```
 
 
@@ -841,19 +898,13 @@ String phone;
 
 
 ```java
-class PersonResponse {
-
-Long id;
-
-String name;
-
-String email;
-
-String phone;
-
-String status;
-
-}
+record PersonResponse(
+    Long id,
+    String name,
+    String email,
+    String phone,
+    PersonStatus status
+) {}
 ```
 
 
@@ -876,15 +927,11 @@ record PersonStatisticsResponse(
 
 
 ```java
-class CourseCreateRequest {
-
-String code;
-
-String name;
-
-String description;
-
-}
+record CourseCreateRequest(
+    String code,
+    String name,
+    String description
+) {}
 ```
 
 
@@ -911,7 +958,8 @@ record CourseResponse(
 record CourseGraphResponse(
     List<CourseNodeResponse> nodes,
     List<CourseEdgeResponse> edges,
-    List<Long> topologicalOrder
+    List<Long> topologicalOrder,
+    List<List<Long>> stages
 ) {}
 ```
 
@@ -922,13 +970,19 @@ record CourseGraphResponse(
 
 
 ```java
-class EnrollmentCreateRequest {
+record EnrollmentCreateRequest(
+    Long personId,
+    Long courseId
+) {}
+```
 
-Long personId;
+其他更新與先修 Request DTO：
 
-Long courseId;
-
-}
+```java
+record PersonUpdateRequest(String name, String email, String phone, PersonStatus status) {}
+record CourseUpdateRequest(String code, String name, String description) {}
+record EnrollmentUpdateRequest(EnrollmentStatus status) {}
+record PrerequisiteCreateRequest(Long prerequisiteId) {}
 ```
 
 
@@ -965,9 +1019,14 @@ private String email;
 
 ```json
 {
-"timestamp":"2026-08-20T12:00:00",
-"status":400,
-"message":"Email already exists"
+  "timestamp": "2026-08-25T12:00:00",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Request validation failed",
+  "path": "/api/people",
+  "fieldErrors": {
+    "name": "must not be blank"
+  }
 }
 ```
 
@@ -988,13 +1047,13 @@ private String email;
 
 Backend 完成後確認：
 
-- [ ] Controller 使用 ResponseEntity
-- [ ] Controller 不回傳 Entity
-- [ ] 使用 Request / Response DTO
-- [ ] Service 使用 Interface
-- [ ] Validation 完成
-- [ ] Exception 統一處理
-- [ ] 搜尋、篩選與排序在分頁前由 Backend 完成
-- [ ] Course Response 與 Graph Response 能表達先修關係
-- [ ] 已完成 Enrollment 不可再修改
-- [ ] Alert Generator 與 MaxHeap 責任分離
+- [x] Controller 使用 ResponseEntity
+- [x] Controller 不回傳 Entity
+- [x] 使用 Request / Response DTO
+- [x] Service 使用 Interface
+- [x] Validation 完成
+- [x] Exception 統一處理
+- [x] 搜尋、篩選與排序在分頁前由 Backend 完成
+- [x] Course Response 與 Graph Response 能表達先修關係
+- [x] 已完成 Enrollment 不可再修改
+- [x] Alert Generator 與 MaxHeap 責任分離

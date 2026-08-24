@@ -29,10 +29,10 @@
 | 元件 | 類型 | 解決的問題 | 實際整合位置 |
 |-|-|-|-|
 | `CustomHashTable<K,V>` | 資料結構 | 以 key 快速取得 value | CourseGraph、BFS、DFS、Topological Sort |
-| `CourseGraph<T>` | 資料結構 | 表示「先修課程 → 依賴課程」關係 | CourseService |
+| `CourseGraph<T>` | 資料結構 | 表示「先修課程 → 依賴課程」關係 | CourseService、EnrollmentService |
 | `MaxHeap<T>` | 資料結構 | 快速取出最高優先級資料 | AlertService |
 | `BreadthFirstSearch` | 演算法 | 從起點逐層走訪圖形 | 獨立展示與單元測試 |
-| `DepthFirstSearch` | 演算法 | 深入走訪及判斷兩點是否可達 | 新增先修關係的 Cycle 檢查 |
+| `DepthFirstSearch` | 演算法 | 深入走訪及判斷兩點是否可達 | Cycle 檢查、學員可註冊課程判斷 |
 | `TopologicalSort` | 演算法 | 產生符合先修限制的順序 | Learning Path API |
 | `MergeSort` | 演算法 | 以穩定的 `O(n log n)` 排序完整結果 | EnrollmentService 課程名稱排序 |
 | `AlertGenerator` | 分析／業務規則 | 依修課狀態與日期決定警示及 priority | Enrollment 新增與狀態更新流程 |
@@ -63,8 +63,9 @@ src/main/java/com/centerops/
 ```text
 service/impl/
 ├── CourseServiceImpl.java       ← Graph、DFS、Topological Sort
+├── EnrollmentServiceImpl.java   ← Graph、DFS、MergeSort、Alert Generator、修課資格驗證
 ├── AlertServiceImpl.java        ← MaxHeap
-└── EnrollmentServiceImpl.java   ← Alert Generator、MergeSort
+└── DashboardServiceImpl.java    ← Dashboard 統計
 ```
 
 ---
@@ -95,6 +96,8 @@ flowchart TD
     CS --> DFS
     CS --> TS
     CG --> BFS
+    ES --> CG
+    ES --> DFS
     ES --> MS
     ES --> AG
     AG --> DB
@@ -185,11 +188,14 @@ GET /api/courses/learning-path
 ```text
 Course + CoursePrerequisite Repository
 → 建立 CourseGraph
-→ TopologicalSort.sort(graph)
-→ CourseGraphResponse(nodes, edges, topologicalOrder)
+→ TopologicalSort.sortByStages(graph)
+→ 攤平成向後相容的 topologicalOrder
+→ CourseGraphResponse(nodes, edges, topologicalOrder, stages)
 ```
 
 `topologicalOrder` 是「一組符合先修限制的可行順序」。相鄰的兩門課不一定有直接先修關係，因此前端不能用單一連續箭頭把所有課程畫成一條鏈。
+
+`stages` 會把同一輪可修習的課程放在同一組，讓不同技術分支可以平行呈現，避免線性編號讓使用者誤以為所有前項課程都必須依序完成。
 
 ### 5.4 BFS 與 DFS 的差異
 
@@ -198,7 +204,24 @@ BFS：一層一層向外找，使用 Queue
 DFS：沿一條路徑走到底，再回頭，使用遞迴
 ```
 
-本專案以 DFS 的可達性判斷 Cycle。BFS 保留完整實作與測試，可在報告中展示不同圖形走訪策略，但不額外擴充 API。
+本專案以 DFS 的可達性判斷 Cycle，也用相同的可達性判斷一門課的所有直接與間接先修課程，
+只讓已完成全部先修條件的學員註冊。BFS 保留完整實作與測試，可在報告中展示不同圖形走訪策略，但不額外擴充 API。
+
+### 5.5 學員可註冊課程
+
+```http
+GET /api/people/{personId}/available-courses
+```
+
+```text
+Repository 取得全部課程、先修關係與學員修課紀錄
+→ 建立 CourseGraph
+→ 對每門尚未註冊課程，以 DFS 判斷哪些課程可以到達該目標
+→ 所有可到達的先修課程都必須存在 COMPLETED 紀錄
+→ 回傳符合資格的 CourseOptionResponse
+```
+
+`POST /api/enrollments` 會重做相同驗證，Frontend 下拉選單只是改善操作體驗，不能取代 Backend 業務規則。
 
 ---
 
@@ -228,7 +251,8 @@ PUT /api/enrollments/{id}
 → 回傳 EnrollmentResponse
 ```
 
-自動警示使用 `[AUTO] ` 訊息前綴識別，避免修改 `sample_data.sql` 的 Demo Alert。這是目前不擴充資料庫 schema 的 MVP 方案。
+系統警示使用 `[AUTO] ` 訊息前綴識別。`sample_data.sql` 也以相同規則建立基準警示，
+因此 Runtime Generator 可在 Enrollment 更新後找到並同步同一筆資料。這是目前不擴充資料庫 schema 的 MVP 方案。
 
 ### 6.2 MaxHeap 排序
 
@@ -432,7 +456,7 @@ HashTable 最壞情況發生在大量 key 落入相同 bucket，必須沿 collis
 
 1. 呼叫 `GET /api/courses/learning-path`。
 2. 顯示 `nodes` 與 `edges`。
-3. 顯示 `topologicalOrder`。
+3. 顯示 `stages`，說明同一階段可平行學習；`topologicalOrder` 保留作為線性結果。
 4. 選一條 edge，確認 prerequisite 位於 dependent 之前。
 5. 說明拓樸排序不是唯一答案，也不是單一路徑。
 
@@ -455,7 +479,7 @@ HashTable 最壞情況發生在大量 key 落入相同 bucket，必須沿 collis
 
 ## 13. 測試範圍
 
-目前完整 Maven 測試共 81 項，包含：
+目前完整 Maven 測試共 85 項，包含：
 
 - 三個自訂資料結構的單元測試。
 - BFS、DFS、Topological Sort、MergeSort 單元測試。

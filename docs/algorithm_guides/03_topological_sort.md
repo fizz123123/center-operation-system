@@ -106,9 +106,12 @@ boolean cycle = TopologicalSort.hasCycle(graph);
 | 方法 | 用途 | 回傳值 | 可能例外 | 複雜度 |
 |---|---|---|---|---:|
 | `sort(CourseGraph<T>)` | 產生一組合法拓樸順序 | 不可修改的 List | null；Graph 有 cycle | `O(V + E)` |
+| `sortByStages(CourseGraph<T>)` | 將同一輪可處理的頂點分成平行階段 | 不可修改的巢狀 List | null；Graph 有 cycle | `O(V + E)` |
 | `hasCycle(CourseGraph<T>)` | 判斷是否存在 cycle | boolean | graph 為 null | `O(V + E)` |
 
 空 Graph 的拓樸排序是空 List，且不含 cycle。
+
+`sortByStages` 會在每輪開始時記錄 Queue 的大小，僅將這批已經 ready 的頂點放進同一階段；處理過程中新解鎖的頂點會留到下一階段。`sort` 則將這些階段依序攤平，因此兩種結果遵守完全相同的先修限制。
 
 ---
 

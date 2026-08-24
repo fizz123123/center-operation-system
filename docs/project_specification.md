@@ -80,17 +80,20 @@ gantt
     *   搜尋欄位具備 debounce 功能。
     *   顯示總數、在學及停用人數，這些統計數據獨立於列表的搜尋與篩選。
     *   新增人員時 Email 不可重複。
-    *   編輯人員時 Email 不可修改。
+    *   目前編輯介面不提供 Email 欄位；Backend 的 `PersonUpdateRequest` 仍接受可選 Email，並驗證不可與其他人員重複。
 
 ### 4.2. 學習紀錄
 
 *   **功能：** 查詢學員的修課紀錄，更新學習狀態。
 *   **API 規格：**
+    *   `GET /api/enrollments`: 分頁查詢全部修課紀錄，支援 `page`, `sort`, `direction` 參數。
     *   `GET /api/people/{personId}/enrollments`: 分頁查詢指定學員的修課紀錄，支援 `page`, `sort` (目前只支援 `courseName`), `direction` (asc/desc) 參數。
-    *   `POST /api/enrollments`: 註冊課程，請求體為 `EnrollmentCreateRequest`。
+    *   `GET /api/people/{personId}/available-courses`: 查詢尚未註冊，且直接與間接先修課程皆已完成的可註冊課程。
+    *   `POST /api/enrollments`: 註冊課程，請求體為 `EnrollmentCreateRequest`；後端必須再次驗證所有先修課程皆已完成。
     *   `PUT /api/enrollments/{id}`: 更新學習狀態，請求體為 `{ status: "COMPLETED" }`。
 *   **前端行為：**
     *   切換排序後，頁碼重設為 0。
+    *   註冊課程選單只顯示後端判定可註冊的課程；沒有符合資格的課程時顯示明確提示。
     *   `COMPLETED` 狀態的紀錄，其狀態選單必須禁用，並提供不可修改的提示。
     *   保留 API 錯誤處理。
 
@@ -99,6 +102,7 @@ gantt
 *   **功能：** 查詢、新增、修改課程資料，管理課程先修關係。
 *   **API 規格：**
     *   `GET /api/courses`: 分頁查詢所有課程，支援 `page`, `search` (課程代碼或名稱部分比對) 參數。
+    *   `GET /api/courses/{id}`: 查詢單一課程及其直接先修課程 ID。
     *   `POST /api/courses`: 新增課程，請求體為 `CourseCreateRequest`。
     *   `PUT /api/courses/{id}`: 修改課程資料，請求體為 `CourseUpdateRequest`。
     *   `POST /api/courses/{courseId}/prerequisites`: 建立課程先修關係，請求體為 `{ prerequisiteId: Long }`。
@@ -117,10 +121,10 @@ gantt
 
 *   **功能：** 視覺化課程圖，顯示建議修課順序。
 *   **API 規格：**
-    *   `GET /api/courses/learning-path`: 獲取課程圖的節點 (`nodes`)、邊 (`edges`) 和拓樸排序 (`topologicalOrder`)。
+    *   `GET /api/courses/learning-path`: 獲取課程圖的節點 (`nodes`)、邊 (`edges`)、拓樸排序 (`topologicalOrder`) 與可平行學習階段 (`stages`)。
 *   **前端行為：**
     *   下拉選單使用 `GET /api/courses/options`。
-    *   配合新的 Graph Response 格式 (`nodes`, `edges`, `topologicalOrder`) 進行渲染。
+    *   配合 Graph Response 格式 (`nodes`, `edges`, `topologicalOrder`, `stages`) 進行階段式渲染。
     *   不可用連續箭頭暗示拓樸排序中相鄰課程具有直接先修關係。
     *   若保留線性清單，標題改為「一組可行的建議修課順序」。
 
@@ -483,14 +487,14 @@ erDiagram
 *   **結構：**
     *   **節點 (Nodes)：** 代表課程 (Course)。每個節點包含課程 ID、代碼和名稱。
     *   **邊 (Edges)：** 代表先修關係。邊的方向固定為「先修課程 → 依賴它的課程」。例如，如果課程 A 是課程 B 的先修，則存在一條從 A 指向 B 的邊。
-    *   **內部表示：** 通常使用鄰接列表 (Adjacency List) 來儲存圖。例如，`Map<Long, List<Long>> adjacencyList`，其中 Key 是課程 ID，Value 是其直接後續課程的 ID 列表。
+    *   **內部表示：** 使用鄰接列表 (Adjacency List)，由自訂 `CustomHashTable<T, List<T>>` 保存每個課程及其直接後續課程，另以自訂 HashTable 保存入度。
 *   **應用場景：**
     *   **拓樸排序 (Topological Sort)：** 根據課程的先修關係，生成一個可行的修課順序。這對於規劃學員的學習路徑至關重要。
     *   **循環檢測 (Cycle Detection)：** 在新增先修關係時，檢測是否會形成循環依賴（例如 A → B → C → A），避免無效的課程設計。
     *   **可用先修課程查詢：** 根據當前課程，排除已是其先修、會形成循環，或課程本身，來提供可選的先修課程列表。
 *   **演算法關聯：**
-    *   **拓樸排序：** 可基於深度優先搜尋 (DFS) 或 Kahn's Algorithm 實現。
-    *   **循環檢測：** 可在 DFS 過程中通過追蹤訪問狀態（未訪問、訪問中、已訪問）來實現。
+    *   **拓樸排序：** 本專案使用 Kahn's Algorithm，並同時輸出線性順序與可平行學習階段。
+    *   **循環檢測：** 新增 `prerequisite → course` 前，以 DFS 檢查是否已存在 `course → prerequisite` 路徑。
 
 ### 12.2. MaxHeap (最大堆積)
 
@@ -508,26 +512,26 @@ erDiagram
 
 ### 12.3. CustomHashTable (自訂雜湊表)
 
-*   **目的：** 提供高效的鍵值對儲存和檢索，可能用於特定場景下的快速查找，例如緩存或特定 ID 到物件的映射。
+*   **目的：** 提供 CourseGraph 與圖形走訪實際需要的鍵值索引。
 *   **結構：**
     *   由一個陣列和一個雜湊函數組成。雜湊函數將鍵映射到陣列的索引。
     *   **衝突解決：** 當多個鍵映射到同一個索引時，需要解決衝突。常見方法有鏈地址法 (Chaining) 或開放定址法 (Open Addressing)。
 *   **應用場景：**
-    *   快速查找：例如，根據課程代碼快速查找課程物件，或根據 Email 快速查找人員物件。
-    *   緩存：儲存頻繁訪問的數據，減少資料庫查詢。
+    *   `CourseGraph` 的鄰接串列與入度表。
+    *   BFS／DFS／Topological Sort 的 visited、indegree 等執行狀態。
 *   **性能：** 在理想情況下，平均時間複雜度為 O(1) 進行插入、刪除和查找。最壞情況下可能退化為 O(N)。
 
 ### 12.4. 其他演算法
 
 *   **BFS (廣度優先搜尋) / DFS (深度優先搜尋)：**
     *   **目的：** 遍歷圖或樹的節點。
-    *   **應用：** 在 `CourseGraph` 中，可用於查找從某門課程可達的所有課程，或檢測兩門課程之間是否存在路徑。
+    *   **應用：** DFS 實際用於 Cycle 檢查與學員先修資格判斷；BFS 保留完整實作與單元測試，沒有額外產品 API。
 *   **Topological Sort (拓樸排序)：**
     *   **目的：** 對有向無環圖 (DAG) 的節點進行線性排序，使得對於每條有向邊 U → V，U 都出現在 V 之前。
     *   **應用：** 在 `CourseGraph` 中，用於生成學員的建議修課順序。
 *   **Merge Sort (合併排序)：**
-    *   **目的：** 一種高效的比較排序演算法。
-    *   **應用：** 可能用於對大型列表進行排序，例如在某些報表生成或數據處理環節中。其時間複雜度為 O(N log N)，穩定且適用於外部排序。
+    *   **目的：** 一種穩定的 O(N log N) 比較排序演算法。
+    *   **應用：** `GET /api/enrollments` 與個人修課查詢指定 `sort=courseName` 時，先對完整結果排序，再進行每頁 10 筆的分頁。
 
 ## 13. 測試案例
 
@@ -551,6 +555,7 @@ erDiagram
         *   查詢候選後新增關係時仍再次執行循環驗證。
     *   **EnrollmentService：**
         *   正常註冊、重複註冊處理。
+        *   可註冊課程只包含所有直接與間接先修皆已完成的課程，直接呼叫註冊 API 仍會再次驗證。
         *   狀態更新、完成課程時寫入日期。
         *   禁止學習狀態倒退、`COMPLETED` 紀錄不可再次修改。
         *   依課程名稱升序/降序排序後再分頁。
@@ -565,7 +570,7 @@ erDiagram
         *   添加邊：A → B，確認 B 出現在 A 的鄰接列表。
         *   循環檢測：A → B → C → A，確認能檢測出循環。
         *   拓樸排序：分支圖可產生合法順序，不相連節點包含在結果中。
-        *   `nodes`、`edges`、`topologicalOrder` 的 ID 互相對應。
+        *   `nodes`、`edges`、`topologicalOrder`、`stages` 的 ID 互相對應。
     *   **MaxHeap：** 插入、移除最大元素，維持堆的性質。
 *   **演算法測試：**
     *   **MergeSort：** 空集合、單筆資料、已排序資料、亂序資料的排序。

@@ -25,6 +25,11 @@ Alert Generator
 Generator 負責「要不要警示、priority 是多少、message 是什麼」。`MaxHeap` 只負責將已經具有 priority
 的 Alert 排序，兩者不能混在一起。
 
+訊息只描述需要關注的修課狀況；人員與課程由 Alert Response 的結構化欄位呈現，避免姓名或課程名稱
+更新後，已保存的 message 仍殘留舊資料。
+
+`[AUTO] ` 只作為 Backend 辨識系統警示的內部標記；Frontend 顯示訊息時會移除此一前綴。
+
 ---
 
 ## 2. MVP 規則
@@ -51,18 +56,15 @@ IN_PROGRESS  ├─ 無警示 ────────┼─ priority 2 ──�
 
 ## 3. 為什麼使用 `[AUTO]` 前綴？
 
-目前 MVP 的 `alerts` 資料表沒有 `source` 或 `enrollment_id` 欄位，但 Generator 必須區分：
-
-- `sample_data.sql` 建立的 Demo Alert
-- 系統依 Enrollment 自動建立的 Alert
-
-因此自動訊息統一以 `[AUTO] ` 開頭，並使用下列條件尋找既有警示：
+目前 MVP 的 `alerts` 資料表沒有 `source` 或 `enrollment_id` 欄位，因此所有由系統規則維護的警示
+統一以 `[AUTO] ` 開頭，並使用下列條件尋找既有警示：
 
 ```text
 person_id + course_id + message starts with "[AUTO] "
 ```
 
-如此可以更新或移除自己的警示，又不會誤動 Demo 資料。這是 MVP 的識別策略；若未來需要完整稽核，
+`sample_data.sql` 也使用相同前綴建立 150 筆基準警示，因此 Runtime 可在修課狀態更新時延續維護同一筆資料。
+這是 MVP 的識別策略；若未來需要完整稽核，
 可再新增 `source`、`enrollment_id` 與唯一約束。
 
 ---
@@ -220,7 +222,7 @@ Generator 是會改變的業務規則；MaxHeap 是可重用的資料結構。�
 ### Q2：為什麼完成後刪除，而不是設為 resolved？
 
 目前 UI 沒有 resolved 篩選或歷史頁面，規格也定義 `COMPLETED` 不產生警示。MVP 因此只移除系統自己的
-`[AUTO]` 警示，使使用者不再看到它；Demo 警示不受影響。
+`[AUTO]` 警示，使使用者不再看到它；這也適用於 SQL 預先建立、但屬於同一 person/course 的基準警示。
 
 ### Q3：為什麼不是每次查詢時掃描全部 Enrollment？
 
@@ -234,5 +236,5 @@ GET 不應產生資料庫副作用，而且每次開啟頁面都掃描全部修�
 
 ### Q5：為什麼自動警示要加前綴？
 
-因為目前 schema 沒有警示來源欄位。前綴是最低成本且不改 schema 的 MVP 做法，能避免 Generator 誤動
-sample data；正式擴充時應改為明確欄位與資料庫唯一約束。
+因為目前 schema 沒有警示來源欄位。前綴是最低成本且不改 schema 的 MVP 做法，讓 SQL 基準資料與
+Runtime Generator 使用相同的識別規則；正式擴充時應改為明確欄位與資料庫唯一約束。

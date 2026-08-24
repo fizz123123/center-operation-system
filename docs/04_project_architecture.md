@@ -20,7 +20,7 @@
 
 
 ```text
-com.example.center
+com.centerops
 
 ├── controller
 │
@@ -43,9 +43,7 @@ com.example.center
 │
 ├── analytics
 │
-├── exception
-│
-└── config
+└── exception
 ```
 
 
@@ -166,16 +164,11 @@ Example:
 ```java
 public interface CourseService {
 
+    PageResponse<CourseResponse> getAll(int page, String search);
 
-PageResponse<CourseResponse> getCourses(
-int page,
-String search
-);
+    CourseResponse getById(Long id);
 
-
-CourseResponse createCourse(
-CourseCreateRequest request
-);
+    CourseResponse create(CourseCreateRequest request);
 
 
 }
@@ -204,7 +197,7 @@ public class CourseServiceImpl
 implements CourseService {
 
 
-private final CourseRepository repository;
+private final CourseRepository courseRepository;
 
 
 }
@@ -437,7 +430,8 @@ MaxHeap
 - 不依賴 Spring
 - 不直接存取 Database
 
-`CourseGraph` 的邊統一定義為「先修課程 → 依賴它的課程」，並提供節點、邊與拓樸排序結果。拓樸排序只保證先修課程出現在依賴課程之前，不代表結果中相鄰節點有直接關係。
+`CourseGraph` 的邊統一定義為「先修課程 → 依賴它的課程」，只保存頂點、鄰接關係與入度；
+拓樸排序由獨立的 `TopologicalSort` 執行。排序只保證先修課程出現在依賴課程之前，不代表結果中相鄰節點有直接關係。
 
 `MaxHeap` 只負責排列已具有 priority 的 Alert，不得包含「什麼情況應產生警示」的業務規則。
 
@@ -489,11 +483,8 @@ analytics/
 ```
 
 
-負責：
-
-- Dashboard 計算
-- Completion Rate
-- Alert Generator
+目前包含 `AlertGenerator`，負責依 Enrollment 狀態與日期同步系統警示。
+Dashboard 統計與 Completion Rate 仍由 `DashboardService` 負責，不放入資料結構或 Alert Generator。
 
 Alert Generator 的 MVP 規則以 Enrollment status 與 start date 判斷是否產生警示及 priority；完成判定後再交給 MaxHeap 排序。兩者責任分離：
 
@@ -511,7 +502,8 @@ Alert Repository
 ```
 
 Generator 在 Enrollment 建立或狀態更新成功後執行，不在 `GET /api/alerts` 時掃描或修改資料，
-因此查詢端點保持唯讀。`sample_data.sql` 的 Demo Alert 沒有 `[AUTO]` 前綴，Generator 不會修改它們。
+因此查詢端點保持唯讀。`sample_data.sql` 以相同 `[AUTO]` 規則建立 150 筆基準警示；
+當對應 Enrollment 被更新時，Generator 會同步更新或移除該筆警示。
 
 
 流程：

@@ -72,19 +72,7 @@ src/main/resources/static/
 - API
 
 
-負責模組：
-
-```text
-backend/
-
-entity
-
-repository
-
-service
-
-controller
-```
+負責模組：`src/main/java/com/centerops/`、`src/main/resources/` 與 `database/`。
 
 
 ---
@@ -102,17 +90,7 @@ controller
 - UI 整合
 
 
-負責：
-
-```text
-resources/static
-
-pages/
-
-js/
-
-css/
-```
+負責：`frontend/src/` 原始碼；完成修改後執行 Vite build，更新 `src/main/resources/static/` 部署成品。
 
 
 ---
