@@ -27,6 +27,21 @@ export function addPrerequisite(courseId, prerequisiteId) {
   return callApi(() => http.post(`/courses/${courseId}/prerequisites`, { prerequisiteId }))
 }
 
+// DELETE /api/courses/{courseId}/prerequisites/{prerequisiteId} －移除課程先修關係
+export function removePrerequisite(courseId, prerequisiteId) {
+  return callApi(() => http.delete(`/courses/${courseId}/prerequisites/${prerequisiteId}`))
+}
+
+// GET /api/courses/{courseId}/available-prerequisites －查詢可用先修課程
+export function getAvailablePrerequisites(courseId) {
+  return callApi(() => http.get(`/courses/${courseId}/available-prerequisites`))
+}
+
+// GET /api/courses/options －查詢課程選項（不分頁的輕量資料）
+export function getCourseOptions() {
+  return callApi(() => http.get('/courses/options'))
+}
+
 // GET /api/courses/learning-path －取得拓樸排序後的課程學習路徑（BFS/DFS/Topological Sort 展示用）
 export function getLearningPath() {
   return callApi(() => http.get('/courses/learning-path'))

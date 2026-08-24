@@ -20,7 +20,7 @@
 
 
 ```text
-com.example.center
+com.centerops
 
 ├── controller
 │
@@ -43,9 +43,7 @@ com.example.center
 │
 ├── analytics
 │
-├── exception
-│
-└── config
+└── exception
 ```
 
 
@@ -166,13 +164,11 @@ Example:
 ```java
 public interface CourseService {
 
+    PageResponse<CourseResponse> getAll(int page, String search);
 
-PageResponse<CourseResponse> getCourses(int page);
+    CourseResponse getById(Long id);
 
-
-CourseResponse createCourse(
-CourseCreateRequest request
-);
+    CourseResponse create(CourseCreateRequest request);
 
 
 }
@@ -201,11 +197,35 @@ public class CourseServiceImpl
 implements CourseService {
 
 
-private final CourseRepository repository;
+private final CourseRepository courseRepository;
 
 
 }
 ```
+
+
+## 分頁查詢責任
+
+人員、課程、修課紀錄與警示的搜尋、篩選及排序由 Service／Repository 在分頁前完成。Frontend 只傳入查詢條件並顯示 `PageResponse`，不得只處理目前載入的 10 筆資料。
+
+```text
+Query Parameters
+↓
+Controller
+↓
+Service 驗證允許的條件
+↓
+Repository／Algorithm 對完整結果查詢、篩選與排序
+↓
+PageResponse
+```
+
+人員統計使用專屬 `PersonStatisticsResponse`，不把人員特有欄位加入共用的 `PageResponse<T>`。
+
+Enrollment 未指定 `sort` 時維持 Repository 分頁；指定 `sort=courseName` 時，Service 先取得全部符合條件的
+Enrollment，交由自訂 `MergeSort` 排序後再建立 `PageResponse`。此路徑用於展示演算法實際整合，API 契約不變。
+
+課程先修關係的可用候選由 Backend Course Graph 判斷。Frontend 可先隱藏會形成 Cycle 的選項，但建立關係時 Service 仍須再次驗證。
 
 
 ---
@@ -410,6 +430,11 @@ MaxHeap
 - 不依賴 Spring
 - 不直接存取 Database
 
+`CourseGraph` 的邊統一定義為「先修課程 → 依賴它的課程」，只保存頂點、鄰接關係與入度；
+拓樸排序由獨立的 `TopologicalSort` 執行。排序只保證先修課程出現在依賴課程之前，不代表結果中相鄰節點有直接關係。
+
+`MaxHeap` 只負責排列已具有 priority 的 Alert，不得包含「什麼情況應產生警示」的業務規則。
+
 
 ---
 
@@ -442,6 +467,9 @@ MergeSort
 - 可獨立測試
 - 不依賴 Controller / Repository
 
+`MergeSort` 提供容易展示的 `int[]` 版本，以及供應用層排序物件的泛型 `List<T> + Comparator` 版本。
+`EnrollmentService` 只在使用者明確指定 `sort=courseName` 時呼叫泛型版本；未指定排序時仍使用資料庫分頁。
+
 
 ---
 
@@ -455,11 +483,27 @@ analytics/
 ```
 
 
-負責：
+目前包含 `AlertGenerator`，負責依 Enrollment 狀態與日期同步系統警示。
+Dashboard 統計與 Completion Rate 仍由 `DashboardService` 負責，不放入資料結構或 Alert Generator。
 
-- Dashboard 計算
-- Completion Rate
-- Alert Generator
+Alert Generator 的 MVP 規則以 Enrollment status 與 start date 判斷是否產生警示及 priority；完成判定後再交給 MaxHeap 排序。兩者責任分離：
+
+```text
+Enrollment API 寫入流程
+├─ Enrollment Repository（保存修課狀態）
+└─ Alert Generator（同步建立／更新／移除 [AUTO] Alert）
+   └─ Alert Repository
+
+Alert API 查詢流程
+Alert Repository
+└─ MaxHeap（priority DESC、createdAt ASC、id ASC）
+   └─ 分頁（每頁 10 筆）
+      └─ Alert Response DTO
+```
+
+Generator 在 Enrollment 建立或狀態更新成功後執行，不在 `GET /api/alerts` 時掃描或修改資料，
+因此查詢端點保持唯讀。`sample_data.sql` 以相同 `[AUTO]` 規則建立 150 筆基準警示；
+當對應 Enrollment 被更新時，Generator 會同步更新或移除該筆警示。
 
 
 流程：
@@ -608,33 +652,34 @@ Rollback
 # 15. Frontend Architecture
 
 
-前端放：
+前端原始碼放：
 
 ```
-src/main/resources/static
+frontend/
 ```
 
+Vite 建置輸出放：
 
-原因：
+```
+src/main/resources/static/
+```
 
-- Spring Boot 自動提供
+此配置的原因：
+
+- 開發時由 Vite dev server 將 `/api` proxy 到 Spring Boot
+- 部署時由 Spring Boot 提供編譯後靜態檔案
 - 單體部署
-- 不需處理 CORS
+- 開發 proxy 與正式環境同源部署均不需額外 CORS 設定
 
 
-結構：
+Frontend 修改後必須重新執行 Vite build，才能更新 `static/` 內的部署成品。原始碼與建置成品不可混為同一層。
+
+建置成品結構：
 
 ```text
 static/
 
 ├── index.html
-
-├── pages/
-
-├── js/
-
-├── css/
-
 └── assets/
 ```
 

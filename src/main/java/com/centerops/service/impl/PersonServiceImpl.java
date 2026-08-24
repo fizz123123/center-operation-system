@@ -4,7 +4,9 @@ import com.centerops.dto.request.PersonCreateRequest;
 import com.centerops.dto.request.PersonUpdateRequest;
 import com.centerops.dto.response.PageResponse;
 import com.centerops.dto.response.PersonResponse;
+import com.centerops.dto.response.PersonStatisticsResponse;
 import com.centerops.entity.Person;
+import com.centerops.entity.PersonStatus;
 import com.centerops.exception.DuplicateResourceException;
 import com.centerops.exception.InvalidStateException;
 import com.centerops.exception.ResourceNotFoundException;
@@ -26,16 +28,28 @@ public class PersonServiceImpl implements PersonService {
     private final PersonMapper personMapper;
 
     @Override
-    public PageResponse<PersonResponse> getAll(int page) {
+    public PageResponse<PersonResponse> getAll(int page, String search, PersonStatus status) {
         validatePage(page);
+        String normalizedSearch = normalizeSearch(search);
         return PageResponse.from(
-                personRepository.findAll(PageRequest.of(
-                                page,
-                                PageResponse.DEFAULT_SIZE,
-                                Sort.by(Sort.Direction.ASC, "id")
-                        ))
+                personRepository.findAllBySearchAndStatus(
+                                normalizedSearch,
+                                status,
+                                PageRequest.of(
+                                        page,
+                                        PageResponse.DEFAULT_SIZE,
+                                        Sort.by(Sort.Direction.ASC, "id")
+                                )
+                        )
                         .map(personMapper::toResponse)
         );
+    }
+
+    @Override
+    public PersonStatisticsResponse getStatistics() {
+        long active = personRepository.countByStatus(PersonStatus.ACTIVE);
+        long inactive = personRepository.countByStatus(PersonStatus.INACTIVE);
+        return new PersonStatisticsResponse(active + inactive, active, inactive);
     }
 
     @Override
@@ -95,5 +109,13 @@ public class PersonServiceImpl implements PersonService {
         if (page < 0) {
             throw new InvalidStateException("Page index must be zero or greater");
         }
+    }
+
+    private String normalizeSearch(String search) {
+        if (search == null) {
+            return null;
+        }
+        String normalized = search.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 }

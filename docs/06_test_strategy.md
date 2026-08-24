@@ -98,6 +98,10 @@ Duplicate Exception
 其他案例：
 
 - 查詢不存在的 Person 時拋出 ResourceNotFoundException
+- 姓名搜尋與 Email 搜尋均在分頁前套用
+- `ACTIVE`／`INACTIVE` 篩選結果與分頁 metadata 正確
+- 人員統計滿足 `total = active + inactive`
+- 搜尋或篩選不影響全域統計結果
 
 
 ---
@@ -112,6 +116,12 @@ Duplicate Exception
 - 重複課程代碼
 - 禁止課程將自己設為先修課程
 - 禁止先修關係形成 Cycle
+- 課程代碼或名稱搜尋在分頁前套用
+- `CourseResponse` 正確回傳 `prerequisiteIds`
+- 新增先修關係後重新查詢可取得該關係
+- 刪除先修關係後 Database 與重新查詢結果一致
+- 可用先修課程排除自己、既有關係與會形成 Cycle 的課程
+- 查詢候選後新增關係時仍再次執行 Cycle 驗證
 - Learning Path 必須先列出先修課程
 
 
@@ -124,9 +134,20 @@ Duplicate Exception
 
 - 正常註冊
 - 重複註冊
+- 可註冊課程排除已註冊項目，以及直接或間接先修尚未完成的課程
+- 即使繞過 Frontend 直接呼叫註冊 API，先修尚未完成仍回傳 `409 CONFLICT`
 - 狀態更新
 - 完成課程時寫入開始與完成日期
 - 禁止學習狀態倒退
+- `COMPLETED` 紀錄不可再次修改
+- 依課程名稱 `asc`／`desc` 排序後再分頁
+- `sort=courseName` 對完整查詢結果執行 Merge Sort，而非只排序目前頁面
+- 個人學習紀錄先依 person 篩選，再執行 Merge Sort 與分頁
+- 未指定 sort 時維持 enrollment id 升序的 Repository 分頁
+- 非法 sort 欄位或 direction 回傳 `400 BAD REQUEST`
+
+Demo SQL 額外以遞迴先修閉包驗證 1,000 筆 Enrollment；任何已註冊課程的直接與間接先修都必須存在且為
+`COMPLETED`，先修完成日期也必須早於後續課程開始日期。
 
 
 ---
@@ -140,6 +161,16 @@ Duplicate Exception
 - Enrollment 為零時完成率回傳 0
 
 
+## AlertService
+
+- 未提供 priority 時依 `priority DESC, createdAt ASC` 查詢
+- priority `1`、`2`、`3` 的篩選結果與分頁 metadata 正確
+- priority 不在 1–3 時回傳 `400 BAD REQUEST`
+- Alert Generator 依 Enrollment status 與 start date 產生正確 priority
+- `COMPLETED` 不產生警示
+- SQL 基準警示與 Runtime Generator 使用相同 `[AUTO]` 識別規則，更新時不產生重複資料
+
+
 ---
 
 ## Pagination
@@ -150,6 +181,8 @@ Duplicate Exception
 - Person、Course、Enrollment、Alert 每頁固定 10 筆
 - 回傳 page、totalElements、totalPages、first、last metadata
 - Controller 正確傳遞 page query parameter
+- 搜尋、篩選與排序後的 `totalElements`／`totalPages` 以完整條件結果計算
+- 切換查詢條件後從 page 0 查詢
 
 
 ---
@@ -221,6 +254,8 @@ Expected:
 
 B 出現在 A adjacency list。
 
+邊的方向以 `prerequisite → dependent course` 為準，測試名稱與 fixture 不得混用相反方向。
+
 
 ---
 
@@ -256,6 +291,14 @@ A→B→C→A
 Expected:
 
 Detect Cycle。
+
+其他案例：
+
+- 分支 Graph 可產生合法拓樸順序
+- 不相連節點仍包含在 nodes、topologicalOrder 與 stages
+- `nodes`、`edges`、`topologicalOrder` 與 `stages` 的 ID 均能互相對應
+- stages 同一組可平行學習，所有先修節點都位於依賴節點的較早階段
+- 拓樸排序中相鄰節點不必存在直接 edge
 
 
 ---
@@ -293,6 +336,8 @@ Expected：
 
 維持 Heap Property。
 
+MaxHeap 測試只驗證已具有 priority 的 Alert 排序，不在 Heap 單元測試中驗證 Alert Generator 業務規則。
+
 
 ---
 
@@ -323,6 +368,9 @@ Expected:
 - 空集合
 - 單筆資料
 - 已排序資料
+- 泛型物件清單可依 Comparator 排序
+- 相同比較值維持原始相對順序（Stable Sort）
+- 不修改呼叫端傳入的陣列或清單
 
 
 ---
@@ -466,10 +514,55 @@ Learning Path API
 
 學習路徑正確。
 
+另外確認：
+
+- Graph API 回傳 `nodes`、`edges`、`topologicalOrder`、`stages`
+- 每條 edge 的先修節點出現在依賴節點之前
+- 分支關係不會被誤判為單一鏈狀路徑
+- 新增會形成 Cycle 的關係回傳 `409 CONFLICT`
+
 
 ---
 
-# Scenario 4：Dashboard
+# Scenario 4：人員查詢與統計
+
+流程：
+
+```text
+建立 ACTIVE／INACTIVE 人員
+↓
+依姓名或 Email 搜尋並依狀態篩選
+↓
+檢查 PageResponse
+↓
+GET /api/people/statistics
+```
+
+確認列表條件只影響列表結果，統計仍反映全域資料。
+
+
+---
+
+# Scenario 5：警示產生與篩選
+
+流程：
+
+```text
+建立不同狀態與開始日期的 Enrollment
+↓
+Alert Generator
+↓
+MaxHeap 排序
+↓
+GET /api/alerts?priority=3
+```
+
+確認 Alert Generator 與排序責任分離，且篩選後分頁 metadata 正確。
+
+
+---
+
+# Scenario 6：Dashboard
 
 
 流程：
@@ -625,11 +718,11 @@ Expected:
 
 功能完成條件：
 
-- [ ] Code 完成
-- [ ] Unit Test 通過
-- [ ] API 可正常呼叫
-- [ ] 文件更新
-- [ ] Demo Flow 可執行
+- [x] Code 完成
+- [x] Unit Test 通過（85 項）
+- [x] API 可正常呼叫
+- [x] 文件更新
+- [x] Demo Flow 可執行
 
 
 ---

@@ -2,6 +2,7 @@ package com.centerops.controller;
 
 import com.centerops.dto.request.EnrollmentCreateRequest;
 import com.centerops.dto.request.EnrollmentUpdateRequest;
+import com.centerops.dto.response.CourseOptionResponse;
 import com.centerops.dto.response.EnrollmentResponse;
 import com.centerops.dto.response.PageResponse;
 import com.centerops.service.EnrollmentService;
@@ -18,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.List;
+
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -27,17 +30,26 @@ public class EnrollmentController {
 
     @GetMapping("/enrollments")
     public ResponseEntity<PageResponse<EnrollmentResponse>> getAll(
-            @RequestParam(defaultValue = "0") int page
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(required = false) String sort,
+            @RequestParam(defaultValue = "asc") String direction
     ) {
-        return ResponseEntity.ok(enrollmentService.getAll(page));
+        return ResponseEntity.ok(enrollmentService.getAll(page, sort, direction));
     }
 
     @GetMapping("/people/{personId}/enrollments")
     public ResponseEntity<PageResponse<EnrollmentResponse>> getByPersonId(
             @PathVariable Long personId,
-            @RequestParam(defaultValue = "0") int page
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(required = false) String sort,
+            @RequestParam(defaultValue = "asc") String direction
     ) {
-        return ResponseEntity.ok(enrollmentService.getByPersonId(personId, page));
+        return ResponseEntity.ok(enrollmentService.getByPersonId(personId, page, sort, direction));
+    }
+
+    @GetMapping("/people/{personId}/available-courses")
+    public ResponseEntity<List<CourseOptionResponse>> getAvailableCourses(@PathVariable Long personId) {
+        return ResponseEntity.ok(enrollmentService.getAvailableCourses(personId));
     }
 
     @PostMapping("/enrollments")

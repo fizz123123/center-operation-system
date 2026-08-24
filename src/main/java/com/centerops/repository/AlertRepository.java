@@ -1,10 +1,17 @@
 package com.centerops.repository;
 
 import com.centerops.entity.Alert;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
+import java.util.Optional;
+
 public interface AlertRepository extends JpaRepository<Alert, Long> {
-    Page<Alert> findAllByOrderByPriorityDescCreatedAtAsc(Pageable pageable);
+    List<Alert> findAllByPriority(int priority);
+
+    Optional<Alert> findFirstByPerson_IdAndCourse_IdAndMessageStartingWith(
+            Long personId,
+            Long courseId,
+            String messagePrefix
+    );
 }

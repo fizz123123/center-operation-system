@@ -163,6 +163,7 @@ Constraints:
 
 - `UNIQUE(person_id, course_id)`：避免同一學員重複註冊同一課程
 - 刪除 Person 或 Course 時，相關 Enrollment 一併刪除
+- 狀態只允許向前轉換（`NOT_STARTED` 可轉為 `IN_PROGRESS` 或 `COMPLETED`，`IN_PROGRESS` 可轉為 `COMPLETED`）；`COMPLETED` 不可回退或再次修改，此規則由 Service 驗證
 
 
 ---
@@ -196,7 +197,16 @@ Constraints:
 
 - `UNIQUE(course_id, prerequisite_id)`：避免重複先修關係
 - `course_id <> prerequisite_id`：禁止課程將自己設為先修課程
+- 新增關係前由 Course Graph 檢查不得形成 Cycle
 - 刪除 Course 時，相關先修關係一併刪除
+
+Graph 邊的方向統一定義為：
+
+```text
+prerequisite_id → course_id
+```
+
+即「先修課程指向依賴它的課程」。
 
 
 ---
@@ -219,6 +229,16 @@ Constraints:
 | created_at | DATETIME | NOT NULL |
 
 刪除 Person 時相關 Alert 一併刪除；刪除 Course 時保留 Alert，並將 `course_id` 設為 `NULL`。
+
+Priority 定義：
+
+| Value | Meaning |
+|-:|-|
+| 3 | HIGH，需立即處理 |
+| 2 | MEDIUM，需要追蹤 |
+| 1 | LOW，一般提醒 |
+
+`priority` 是 Alert 建立時保存的事件快照。`MaxHeap` 只負責排序，不負責計算 priority。
 
 
 ---
@@ -350,7 +370,9 @@ COMPLETED
 檢查：
 
 - 同一人不可重複註冊同課程
-- 狀態轉換合理
+- `NOT_STARTED` 可轉為 `IN_PROGRESS` 或 `COMPLETED`
+- `IN_PROGRESS` 只能轉為 `COMPLETED`
+- `COMPLETED` 紀錄不可再修改
 
 
 ---
@@ -360,30 +382,60 @@ COMPLETED
 
 目前 `database/sample_data.sql` 提供：
 
+> `sample_data.sql` 是本機／Demo／測試用的資料重置腳本。每次執行會清空現有業務資料、重設流水號並重建
+> 下列固定資料集，不可在正式環境或需要保留資料的資料庫執行。
+
 | Data | Count |
 |-|-:|
 | Person | 200 |
 | Course | 20 |
 | Enrollment | 1000 |
-| Course Prerequisite | 7 |
-| Alert | 30 |
+| Course Prerequisite | 26 |
+| Alert | 150 |
 
 此資料量足以展示人員與課程查詢、註冊狀態、Dashboard 統計、Course Graph 與 Alert Priority Queue。
+200 名 Person 全部使用不重複的三字中文姓名；前 10 名為固定展示姓名，其餘姓名由 SQL 確定性產生，
+確保不同組員重跑資料腳本後仍得到一致內容。
+
+1,000 筆 Enrollment 由 200 名學員各自的「目標課程」與其完整先修閉包組成。每位學員若已註冊某門
+進階課程，該課程所有直接與間接先修都必定存在且為 `COMPLETED`，完成日期也早於後續課程。
+狀態分布為 85% `COMPLETED`、5% 進行 30–89 天、5% 進行 90 天以上及 5% `NOT_STARTED`。
+其中前 50 名的目標課程已完成，其餘三組各 50 名分別用來展示高、中、低優先權警示。
+
+150 筆 Alert 由 SQL 按照 Enrollment 的 status 與 start date 推導，高、中、低優先權各 50 筆。每筆符合
+條件的 Enrollment 都會建立一筆 `[AUTO]` Alert；重複執行整份腳本會先清除舊資料再建立相同基準，方便
+整合測試與 Demo 重現。
+這些資料使用與 Runtime Alert Generator 相同的門檻，讓 Demo 中的人員、課程、修課狀況與警示內容一致。
+
+Runtime Alert Generator 在 Enrollment 新增或更新時建立、更新或移除警示，採用不擴充 schema 的確定性規則：
+
+| Enrollment condition | Alert priority |
+|-|-:|
+| `IN_PROGRESS` 且開始已滿 90 天 | 3 |
+| `IN_PROGRESS` 且開始已滿 30 天、未滿 90 天 | 2 |
+| `NOT_STARTED` | 1 |
+| `COMPLETED` | 不產生警示 |
+
+Alert Generator 負責判斷是否產生警示及 priority；自訂 MaxHeap 接收已判定的 Alert 並提供優先順序。若未來加入期限或最後活動時間，再以 `due_date`／`last_activity_at` 取代目前依 `start_date` 推導的 MVP 規則。
 
 
 ## Graph Data
 
-正常：
+Sample Data 使用 20 個節點與 26 條邊形成 DAG，包含長路徑、分支與匯合。例如：
 
 ```text
-Java
- ↓
-OOP
- ↓
-Data Structure
- ↓
-Algorithm
+Java Basic → OOP → Data Structure → Algorithm → Artificial Intelligence
+     │          └→ REST API Design ─┐
+     └→ Spring Boot ────────────────┼→ Backend Engineering
+Database ───────────────────────────┘          ├→ Cloud Computing
+                                               ├→ Application Security ─┐
+Git + Linux → DevOps Fundamentals ─────────────┤                       │
+OOP + Spring Boot + Git → Software Testing ────┼→ Software Project     │
+Backend Engineering → System Design ───────────┤                       │
+Computer Networks → Application Security ──────┘───────────────────────┘
 ```
+
+拓樸排序只保證先修課程位於依賴課程之前，不代表結果中相鄰兩門課一定有直接關係。
 
 
 Cycle Detection 的負向測試情境：

@@ -1,12 +1,21 @@
 package com.centerops.service.impl;
 
+import com.centerops.algorithm.DepthFirstSearch;
+import com.centerops.algorithm.TopologicalSort;
+import com.centerops.datastructure.CourseGraph;
 import com.centerops.dto.request.CourseCreateRequest;
 import com.centerops.dto.request.CourseUpdateRequest;
+import com.centerops.dto.response.AvailablePrerequisiteResponse;
+import com.centerops.dto.response.CourseOptionResponse;
+import com.centerops.dto.response.CourseEdgeResponse;
+import com.centerops.dto.response.CourseGraphResponse;
+import com.centerops.dto.response.CourseNodeResponse;
 import com.centerops.dto.response.CoursePrerequisiteResponse;
 import com.centerops.dto.response.CourseResponse;
 import com.centerops.dto.response.PageResponse;
 import com.centerops.entity.Course;
 import com.centerops.entity.CoursePrerequisite;
+import com.centerops.exception.BusinessConflictException;
 import com.centerops.exception.DuplicateResourceException;
 import com.centerops.exception.InvalidStateException;
 import com.centerops.exception.ResourceNotFoundException;
@@ -16,19 +25,18 @@ import com.centerops.repository.CoursePrerequisiteRepository;
 import com.centerops.repository.CourseRepository;
 import com.centerops.service.CourseService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
 import java.util.Set;
 
 @Service
@@ -42,21 +50,59 @@ public class CourseServiceImpl implements CourseService {
     private final CoursePrerequisiteMapper prerequisiteMapper;
 
     @Override
-    public PageResponse<CourseResponse> getAll(int page) {
+    public PageResponse<CourseResponse> getAll(int page, String search) {
         validatePage(page);
-        return PageResponse.from(
-                courseRepository.findAll(PageRequest.of(
-                                page,
-                                PageResponse.DEFAULT_SIZE,
-                                Sort.by(Sort.Direction.ASC, "id")
-                        ))
-                        .map(courseMapper::toResponse)
+        Page<Course> courses = courseRepository.findAllBySearch(
+                normalizeSearch(search),
+                PageRequest.of(
+                        page,
+                        PageResponse.DEFAULT_SIZE,
+                        Sort.by(Sort.Direction.ASC, "id")
+                )
         );
+        Map<Long, List<Long>> prerequisiteIds = getPrerequisiteIds(courses.getContent());
+        return PageResponse.from(courses.map(course ->
+                courseMapper.toResponse(course, prerequisiteIds.getOrDefault(course.getId(), List.of()))
+        ));
+    }
+
+    @Override
+    public List<CourseOptionResponse> getOptions() {
+        List<Course> courses = courseRepository.findAll(Sort.by(Sort.Direction.ASC, "id"));
+        Map<Long, List<Long>> prerequisiteIds = getPrerequisiteIds(courses);
+        return courses.stream()
+                .map(course -> courseMapper.toOptionResponse(
+                        course,
+                        prerequisiteIds.getOrDefault(course.getId(), List.of())
+                ))
+                .toList();
+    }
+
+    @Override
+    public List<AvailablePrerequisiteResponse> getAvailablePrerequisites(Long courseId) {
+        findCourse(courseId);
+        List<Course> courses = courseRepository.findAll(Sort.by(Sort.Direction.ASC, "id"));
+        List<CoursePrerequisite> relations = prerequisiteRepository.findAllByOrderByIdAsc();
+        Set<Long> existingPrerequisiteIds = new HashSet<>();
+        relations.stream()
+                .filter(relation -> relation.getCourse().getId().equals(courseId))
+                .map(relation -> relation.getPrerequisite().getId())
+                .forEach(existingPrerequisiteIds::add);
+        CourseGraph<Long> graph = buildCourseGraph(courses, relations);
+
+        return courses.stream()
+                .filter(candidate -> !candidate.getId().equals(courseId))
+                .filter(candidate -> !existingPrerequisiteIds.contains(candidate.getId()))
+                .filter(candidate -> !wouldCreateCycle(graph, courseId, candidate.getId()))
+                .map(courseMapper::toAvailablePrerequisiteResponse)
+                .toList();
     }
 
     @Override
     public CourseResponse getById(Long id) {
-        return courseMapper.toResponse(findCourse(id));
+        Course course = findCourse(id);
+        Map<Long, List<Long>> prerequisiteIds = getPrerequisiteIds(List.of(course));
+        return courseMapper.toResponse(course, prerequisiteIds.getOrDefault(id, List.of()));
     }
 
     @Override
@@ -66,7 +112,10 @@ public class CourseServiceImpl implements CourseService {
         if (courseRepository.existsByCodeIgnoreCase(code)) {
             throw new DuplicateResourceException("Course code already exists: " + code);
         }
-        return courseMapper.toResponse(courseRepository.save(courseMapper.toEntity(request)));
+        return courseMapper.toResponse(
+                courseRepository.save(courseMapper.toEntity(request)),
+                List.of()
+        );
     }
 
     @Override
@@ -88,7 +137,11 @@ public class CourseServiceImpl implements CourseService {
             course.setDescription(request.description());
         }
 
-        return courseMapper.toResponse(courseRepository.save(course));
+        Map<Long, List<Long>> prerequisiteIds = getPrerequisiteIds(List.of(course));
+        return courseMapper.toResponse(
+                courseRepository.save(course),
+                prerequisiteIds.getOrDefault(id, List.of())
+        );
     }
 
     @Override
@@ -103,8 +156,10 @@ public class CourseServiceImpl implements CourseService {
 
         Course course = findCourse(courseId);
         Course prerequisite = findCourse(prerequisiteId);
-        if (wouldCreateCycle(courseId, prerequisiteId)) {
-            throw new InvalidStateException("The prerequisite relationship would create a cycle");
+        List<CoursePrerequisite> relations = prerequisiteRepository.findAll();
+        CourseGraph<Long> graph = buildCourseGraph(List.of(course, prerequisite), relations);
+        if (wouldCreateCycle(graph, courseId, prerequisiteId)) {
+            throw new BusinessConflictException("The prerequisite relationship would create a cycle");
         }
 
         CoursePrerequisite relation = CoursePrerequisite.builder()
@@ -115,68 +170,81 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
-    public List<String> getLearningPath() {
-        List<Course> courses = courseRepository.findAll(Sort.by(Sort.Direction.ASC, "id"));
-        List<CoursePrerequisite> relations = prerequisiteRepository.findAllByOrderByIdAsc();
-
-        Map<Long, Course> byId = new LinkedHashMap<>();
-        Map<Long, Integer> indegree = new LinkedHashMap<>();
-        Map<Long, List<Long>> adjacency = new HashMap<>();
-        courses.forEach(course -> {
-            byId.put(course.getId(), course);
-            indegree.put(course.getId(), 0);
-        });
-        relations.forEach(relation -> {
-            Long prerequisiteId = relation.getPrerequisite().getId();
-            Long courseId = relation.getCourse().getId();
-            adjacency.computeIfAbsent(prerequisiteId, ignored -> new ArrayList<>()).add(courseId);
-            indegree.computeIfPresent(courseId, (ignored, value) -> value + 1);
-        });
-
-        Queue<Long> ready = new ArrayDeque<>();
-        indegree.forEach((id, value) -> {
-            if (value == 0) {
-                ready.add(id);
-            }
-        });
-
-        List<String> path = new ArrayList<>();
-        while (!ready.isEmpty()) {
-            Long current = ready.remove();
-            path.add(byId.get(current).getName());
-            for (Long dependent : adjacency.getOrDefault(current, List.of())) {
-                int remaining = indegree.computeIfPresent(dependent, (ignored, value) -> value - 1);
-                if (remaining == 0) {
-                    ready.add(dependent);
-                }
-            }
-        }
-        if (path.size() != courses.size()) {
-            throw new InvalidStateException("Course prerequisite graph contains a cycle");
-        }
-        return path;
+    @Transactional
+    public void removePrerequisite(Long courseId, Long prerequisiteId) {
+        CoursePrerequisite relation = prerequisiteRepository
+                .findByCourseIdAndPrerequisiteId(courseId, prerequisiteId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Course prerequisite relationship",
+                        prerequisiteId
+                ));
+        prerequisiteRepository.delete(relation);
     }
 
-    private boolean wouldCreateCycle(Long courseId, Long prerequisiteId) {
-        Map<Long, List<Long>> adjacency = new HashMap<>();
-        prerequisiteRepository.findAll().forEach(relation ->
-                adjacency.computeIfAbsent(relation.getPrerequisite().getId(), ignored -> new ArrayList<>())
-                        .add(relation.getCourse().getId())
-        );
-
-        Queue<Long> pending = new ArrayDeque<>();
-        Set<Long> visited = new HashSet<>();
-        pending.add(courseId);
-        while (!pending.isEmpty()) {
-            Long current = pending.remove();
-            if (current.equals(prerequisiteId)) {
-                return true;
-            }
-            if (visited.add(current)) {
-                pending.addAll(adjacency.getOrDefault(current, List.of()));
-            }
+    @Override
+    public CourseGraphResponse getLearningPath() {
+        List<Course> courses = courseRepository.findAll(Sort.by(Sort.Direction.ASC, "id"));
+        List<CoursePrerequisite> relations = prerequisiteRepository.findAllByOrderByIdAsc();
+        CourseGraph<Long> graph = buildCourseGraph(courses, relations);
+        List<List<Long>> stages;
+        List<Long> topologicalOrder;
+        try {
+            stages = TopologicalSort.sortByStages(graph);
+            topologicalOrder = stages.stream()
+                    .flatMap(List::stream)
+                    .toList();
+        } catch (IllegalStateException exception) {
+            throw new InvalidStateException("Course prerequisite graph contains a cycle");
         }
-        return false;
+
+        List<CourseNodeResponse> nodes = courses.stream()
+                .map(course -> new CourseNodeResponse(course.getId(), course.getCode(), course.getName()))
+                .toList();
+        List<CourseEdgeResponse> edges = relations.stream()
+                .map(relation -> new CourseEdgeResponse(
+                        relation.getPrerequisite().getId(),
+                        relation.getCourse().getId()
+                ))
+                .toList();
+        return new CourseGraphResponse(nodes, edges, topologicalOrder, stages);
+    }
+
+    private CourseGraph<Long> buildCourseGraph(
+            Collection<Course> courses,
+            List<CoursePrerequisite> relations
+    ) {
+        CourseGraph<Long> graph = new CourseGraph<>();
+        courses.forEach(course -> graph.addVertex(course.getId()));
+        relations.forEach(relation -> {
+            graph.addVertex(relation.getPrerequisite().getId());
+            graph.addVertex(relation.getCourse().getId());
+        });
+        relations.forEach(relation -> graph.addEdge(
+                relation.getPrerequisite().getId(),
+                relation.getCourse().getId()
+        ));
+        return graph;
+    }
+
+    private boolean wouldCreateCycle(
+            CourseGraph<Long> graph,
+            Long courseId,
+            Long prerequisiteId
+    ) {
+        return DepthFirstSearch.isReachable(graph, courseId, prerequisiteId);
+    }
+
+    private Map<Long, List<Long>> getPrerequisiteIds(Collection<Course> courses) {
+        if (courses.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> courseIds = courses.stream().map(Course::getId).toList();
+        Map<Long, List<Long>> prerequisiteIds = new HashMap<>();
+        prerequisiteRepository.findAllByCourseIdInOrderByIdAsc(courseIds).forEach(relation ->
+                prerequisiteIds.computeIfAbsent(relation.getCourse().getId(), ignored -> new ArrayList<>())
+                        .add(relation.getPrerequisite().getId())
+        );
+        return prerequisiteIds;
     }
 
     private Course findCourse(Long id) {
@@ -196,5 +264,13 @@ public class CourseServiceImpl implements CourseService {
         if (page < 0) {
             throw new InvalidStateException("Page index must be zero or greater");
         }
+    }
+
+    private String normalizeSearch(String search) {
+        if (search == null) {
+            return null;
+        }
+        String normalized = search.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 }

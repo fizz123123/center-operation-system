@@ -1,0 +1,1 @@
+var e=/^\[AUTO\]\s*/;function t(t){return typeof t==`string`?t.replace(e,``):``}export{t};

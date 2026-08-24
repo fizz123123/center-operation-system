@@ -68,7 +68,10 @@
 ## 功能
 
 - 新增人員
-- 查詢人員列表
+- 分頁查詢人員列表
+- 依姓名或 Email 搜尋人員
+- 依在學／停用狀態篩選人員
+- 查詢總人數、在學人數與停用人數
 - 查詢單一人員
 - 修改人員資料
 
@@ -88,9 +91,12 @@
 ## 功能
 
 - 新增課程
-- 查詢課程
+- 分頁查詢課程
+- 依課程代碼或名稱搜尋課程
 - 修改課程
 - 建立課程先修關係
+- 移除課程先修關係
+- 只提供不會形成 Cycle 的可用先修課程選項
 
 
 ## 管理資料
@@ -108,8 +114,11 @@
 ## 功能
 
 - 學員註冊課程
+- 只顯示所有直接與間接先修皆已完成的可註冊課程
+- Backend 在註冊時再次驗證先修條件
 - 更新課程狀態
-- 查詢學習紀錄
+- 分頁查詢學習紀錄
+- 依課程名稱升冪或降冪排列學習紀錄
 
 
 ## 學習狀態
@@ -122,6 +131,17 @@ IN_PROGRESS
 COMPLETED
 ```
 
+狀態只允許向前轉換，可直接將尚未開始的紀錄標記為已完成：
+
+```text
+NOT_STARTED → IN_PROGRESS
+NOT_STARTED → COMPLETED
+IN_PROGRESS → COMPLETED
+COMPLETED → 無後續狀態
+```
+
+`COMPLETED` 是終止狀態，不可再修改。前端應將操作設為唯讀，Backend 仍須保留驗證以維護資料一致性。
+
 ---
 
 # Module 4：Dashboard 分析
@@ -132,6 +152,7 @@ COMPLETED
 - 總課程數
 - 總註冊數
 - 課程完成率
+- 依優先級排列與篩選的警示
 
 
 ---
@@ -172,13 +193,10 @@ personId → Person
 範例：
 
 ```text
-Java
- ↓
-OOP
- ↓
-Data Structure
- ↓
-Algorithm
+Java ─→ OOP ─→ Data Structure ─→ Algorithm
+  │
+  └─→ Spring Boot ─┐
+Database ──────────┴─→ Backend ─→ Cloud
 ```
 
 
@@ -197,6 +215,8 @@ Algorithm
 用途：
 
 管理課程警示優先級。
+
+`MaxHeap` 只負責依既有 priority 排定處理順序，不負責決定警示內容或 priority。警示產生與優先級判定由 Alert Generator 的業務規則負責。
 
 
 功能：
@@ -217,7 +237,7 @@ Merge Sort
 
 用途：
 
-課程完成率或熱門程度排序。
+課程完成率、熱門程度或學習紀錄課程名稱排序。若用於分頁列表，必須先對完整查詢結果排序再切頁，不能只排序前端目前載入的一頁。
 
 ---
 
@@ -275,28 +295,29 @@ Database
 
 採用：
 
-Spring Boot Static Resource
+Vue 3 + Vite，並由 Spring Boot 提供正式建置成品。
 
 
 位置：
 
 ```text
-src/main/resources/static
+frontend/                         # Vue/Vite 原始碼
+src/main/resources/static/       # Vite 編譯後成品
 ```
 
 
 技術：
 
-- HTML
-- CSS
+- Vue 3
+- Vite
 - JavaScript
-- Bootstrap
+- CSS
 
 
 原因：
 
 - 降低部署複雜度
-- 避免跨域問題
+- 開發時以 Vite proxy、部署時以同源靜態資源避免 CORS 問題
 - 適合短期專題開發
 
 

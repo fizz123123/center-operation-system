@@ -9,7 +9,7 @@ import Badge from '../components/common/Badge.vue'
 import Icon from '../components/common/Icon.vue'
 import FilterDropdown from '../components/common/FilterDropdown.vue'
 import MiniStat from '../components/common/MiniStat.vue'
-import { getPeople, createPerson, updatePerson } from '../api/person.js'
+import { getPeople, createPerson, updatePerson, getPersonStatistics } from '../api/person.js'
 import { personStatusMeta, PERSON_STATUS_OPTIONS } from '../utils/statusMeta.js'
 import { useToastStore } from '../stores/toast.js'
 import { extractErrorMessage } from '../utils/errorMessage.js'
@@ -87,14 +87,10 @@ const inactivePeopleCount = ref(0)
 
 async function loadStats() {
   try {
-    const [all, active, inactive] = await Promise.all([
-      getPeople({ page: 0, size: 1 }),
-      getPeople({ page: 0, size: 1, status: 'ACTIVE' }),
-      getPeople({ page: 0, size: 1, status: 'INACTIVE' }),
-    ])
-    totalPeopleCount.value = all.totalElements
-    activePeopleCount.value = active.totalElements
-    inactivePeopleCount.value = inactive.totalElements
+    const stats = await getPersonStatistics()
+    totalPeopleCount.value = stats.total
+    activePeopleCount.value = stats.active
+    inactivePeopleCount.value = stats.inactive
   } catch {
     // 統計數字讀取失敗不影響主要列表功能，安靜失敗就好，不用額外跳 toast 打擾使用者
   }
