@@ -2,6 +2,9 @@ package com.centerops.algorithm;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Comparator;
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -37,8 +40,48 @@ class MergeSortTest {
 
     @Test
     void rejectsNullInput() {
-        assertThatThrownBy(() -> MergeSort.sort(null))
+        assertThatThrownBy(() -> MergeSort.sort((int[]) null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("values must not be null");
+
+        assertThatThrownBy(() -> MergeSort.sort(
+                (List<String>) null,
+                Comparator.naturalOrder()
+        )).isInstanceOf(NullPointerException.class)
+                .hasMessage("values must not be null");
+
+        assertThatThrownBy(() -> MergeSort.sort(List.of("Java"), null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("comparator must not be null");
+    }
+
+    @Test
+    void sortsObjectsWithComparatorWithoutChangingInput() {
+        List<String> input = List.of("Java", "Algorithm", "Database");
+
+        List<String> result = MergeSort.sort(input, Comparator.naturalOrder());
+
+        assertThat(result).containsExactly("Algorithm", "Database", "Java");
+        assertThat(input).containsExactly("Java", "Algorithm", "Database");
+    }
+
+    @Test
+    void keepsOriginalOrderWhenComparatorValuesAreEqual() {
+        List<NamedItem> input = List.of(
+                new NamedItem("Java", 1),
+                new NamedItem("Algorithm", 2),
+                new NamedItem("Java", 3)
+        );
+
+        List<NamedItem> result = MergeSort.sort(
+                input,
+                Comparator.comparing(NamedItem::name)
+        );
+
+        assertThat(result).extracting(NamedItem::originalOrder)
+                .containsExactly(2, 1, 3);
+    }
+
+    private record NamedItem(String name, int originalOrder) {
     }
 }

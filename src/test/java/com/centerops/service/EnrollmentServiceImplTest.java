@@ -27,6 +27,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -83,25 +84,38 @@ class EnrollmentServiceImplTest {
         assertThat(page.size()).isEqualTo(10);
         assertThat(page.totalElements()).isEqualTo(25);
         assertThat(page.last()).isFalse();
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(enrollmentRepository).findAll(pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getSort().getOrderFor("id").getDirection())
+                .isEqualTo(Sort.Direction.ASC);
     }
 
     @Test
-    void getAllShouldSortByCourseNameDescendingBeforePaging() {
-        when(enrollmentRepository.findAll(any(Pageable.class)))
-                .thenAnswer(invocation -> new PageImpl<>(
-                        java.util.List.of(),
-                        invocation.getArgument(0),
-                        0
-                ));
+    void getAllShouldUseMergeSortBeforeTakingRequestedPage() {
+        List<Enrollment> enrollments = java.util.stream.IntStream.iterate(12, value -> value - 1)
+                .limit(12)
+                .mapToObj(value -> enrollment(
+                        (long) value,
+                        String.valueOf((char) ('A' + value - 1))
+                ))
+                .toList();
+        Enrollment courseK = enrollments.get(1);
+        Enrollment courseL = enrollments.get(0);
+        when(enrollmentRepository.findAll()).thenReturn(enrollments);
+        when(enrollmentMapper.toResponse(courseK)).thenReturn(response(courseK));
+        when(enrollmentMapper.toResponse(courseL)).thenReturn(response(courseL));
 
-        enrollmentService.getAll(0, "courseName", "desc");
+        var page = enrollmentService.getAll(1, "courseName", "asc");
 
-        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(enrollmentRepository).findAll(captor.capture());
-        assertThat(captor.getValue().getSort().getOrderFor("course.name").getDirection())
-                .isEqualTo(Sort.Direction.DESC);
-        assertThat(captor.getValue().getSort().getOrderFor("id").getDirection())
-                .isEqualTo(Sort.Direction.ASC);
+        assertThat(page.content())
+                .extracting(EnrollmentResponse::courseName)
+                .containsExactly("K", "L");
+        assertThat(page.totalElements()).isEqualTo(12);
+        assertThat(page.totalPages()).isEqualTo(2);
+        assertThat(page.first()).isFalse();
+        assertThat(page.last()).isTrue();
+        verify(enrollmentRepository, never()).findAll(any(Pageable.class));
     }
 
     @Test
@@ -111,24 +125,38 @@ class EnrollmentServiceImplTest {
                 .hasMessageContaining("courseName");
 
         verify(enrollmentRepository, never()).findAll(any(Pageable.class));
+        verify(enrollmentRepository, never()).findAll();
     }
 
     @Test
-    void getByPersonIdShouldUseRequestedCourseNameSort() {
+    void getAllShouldRejectUnsupportedDirectionBeforeQuerying() {
+        assertThatThrownBy(() -> enrollmentService.getAll(0, "courseName", "sideways"))
+                .isInstanceOf(InvalidStateException.class)
+                .hasMessageContaining("asc or desc");
+
+        verify(enrollmentRepository, never()).findAll(any(Pageable.class));
+        verify(enrollmentRepository, never()).findAll();
+    }
+
+    @Test
+    void getByPersonIdShouldUseIdAscendingWhenCourseNamesAreEqual() {
+        Enrollment laterJava = enrollment(3L, "Java");
+        Enrollment earlierJava = enrollment(1L, "Java");
+        Enrollment database = enrollment(2L, "Database");
         when(personRepository.existsById(1L)).thenReturn(true);
-        when(enrollmentRepository.findAllByPersonId(any(Long.class), any(Pageable.class)))
-                .thenAnswer(invocation -> new PageImpl<>(
-                        java.util.List.of(),
-                        invocation.getArgument(1),
-                        0
-                ));
+        when(enrollmentRepository.findAllByPersonId(1L))
+                .thenReturn(List.of(laterJava, database, earlierJava));
+        when(enrollmentMapper.toResponse(laterJava)).thenReturn(response(laterJava));
+        when(enrollmentMapper.toResponse(earlierJava)).thenReturn(response(earlierJava));
+        when(enrollmentMapper.toResponse(database)).thenReturn(response(database));
 
-        enrollmentService.getByPersonId(1L, 0, "courseName", "asc");
+        var page = enrollmentService.getByPersonId(1L, 0, "courseName", "desc");
 
-        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(enrollmentRepository).findAllByPersonId(org.mockito.ArgumentMatchers.eq(1L), captor.capture());
-        assertThat(captor.getValue().getSort().getOrderFor("course.name").getDirection())
-                .isEqualTo(Sort.Direction.ASC);
+        assertThat(page.content())
+                .extracting(EnrollmentResponse::id)
+                .containsExactly(1L, 3L, 2L);
+        verify(enrollmentRepository, never())
+                .findAllByPersonId(org.mockito.ArgumentMatchers.eq(1L), any(Pageable.class));
     }
 
     @Test
@@ -242,5 +270,20 @@ class EnrollmentServiceImplTest {
                 enrollment.getStartDate(),
                 enrollment.getCompleteDate()
         );
+    }
+
+    private Enrollment enrollment(Long id, String courseName) {
+        Person person = Person.builder().id(1L).name("Ada").build();
+        Course course = Course.builder()
+                .id(id)
+                .code("COURSE-" + id)
+                .name(courseName)
+                .build();
+        return Enrollment.builder()
+                .id(id)
+                .person(person)
+                .course(course)
+                .status(EnrollmentStatus.NOT_STARTED)
+                .build();
     }
 }

@@ -229,6 +229,9 @@ PageResponse
 
 人員統計使用專屬 `PersonStatisticsResponse`，不把人員特有欄位加入共用的 `PageResponse<T>`。
 
+Enrollment 未指定 `sort` 時維持 Repository 分頁；指定 `sort=courseName` 時，Service 先取得全部符合條件的
+Enrollment，交由自訂 `MergeSort` 排序後再建立 `PageResponse`。此路徑用於展示演算法實際整合，API 契約不變。
+
 課程先修關係的可用候選由 Backend Course Graph 判斷。Frontend 可先隱藏會形成 Cycle 的選項，但建立關係時 Service 仍須再次驗證。
 
 
@@ -469,6 +472,9 @@ MergeSort
 - Stateless
 - 可獨立測試
 - 不依賴 Controller / Repository
+
+`MergeSort` 提供容易展示的 `int[]` 版本，以及供應用層排序物件的泛型 `List<T> + Comparator` 版本。
+`EnrollmentService` 只在使用者明確指定 `sort=courseName` 時呼叫泛型版本；未指定排序時仍使用資料庫分頁。
 
 
 ---

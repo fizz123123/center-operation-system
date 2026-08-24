@@ -533,6 +533,11 @@ Response 使用共同分頁格式，`content` 為 `EnrollmentResponse`。
 
 排序必須先套用於完整查詢結果，再切出指定頁面；不允許 Frontend 只排序目前頁面的 10 筆資料。切換排序方向時，Frontend 必須回到第 0 頁。
 
+- 未傳 `sort`：維持 Repository 依 enrollment id 升序進行資料庫分頁。
+- 傳入 `sort=courseName`：Backend 取得完整條件結果，使用自訂 `MergeSort` 依課程名稱排序，
+  相同課程名稱再依 enrollment id 升序排列，最後切出每頁 10 筆。
+- 課程名稱比較不分英文字母大小寫；`direction` 只改變課程名稱方向，id 的 tie-breaker 固定升序。
+
 
 ---
 
@@ -546,6 +551,8 @@ Request:
 GET /api/people/{personId}/enrollments?page=0
 GET /api/people/{personId}/enrollments?page=0&sort=courseName&direction=desc
 ```
+
+排序與分頁規則和 5.1 相同，但完整結果只包含指定 person 的 Enrollment。
 
 
 Response:

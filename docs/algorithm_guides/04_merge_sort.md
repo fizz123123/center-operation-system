@@ -28,6 +28,8 @@ flowchart LR
 
 ## 2. 本專案的輸入與輸出
 
+本專案保留兩個公開版本。整數版最容易用來解釋演算法：
+
 ```java
 int[] input = {5, 3, 8, 1};
 int[] result = MergeSort.sort(input);
@@ -42,9 +44,17 @@ result = [1, 3, 5, 8]
 
 原始 input 不會被修改。這項設計能避免呼叫端在不知情的情況下失去原始資料。
 
+泛型版供 Enrollment API 實際整合：
+
+```java
+List<Enrollment> sorted = MergeSort.sort(enrollments, enrollmentComparator);
+```
+
+它能依呼叫端提供的 `Comparator` 排列任何物件，也不會修改原始 List。
+
 ---
 
-## 3. 為什麼目前使用 int[]？
+## 3. 為什麼同時保留 int[] 與泛型版本？
 
 專案規格要求展示 Merge Sort，測試範例也是：
 
@@ -52,14 +62,14 @@ result = [1, 3, 5, 8]
 5, 3, 8, 1 → 1, 3, 5, 8
 ```
 
-目前實際的 API 名稱排序已由資料庫完成，Merge Sort 不需要直接排序 Entity 或 DTO。因此採用 `int[]` 可以：
+保留 `int[]` 可以：
 
 - 專注展示分割與合併。
-- 不引入泛型陣列轉型。
-- 不要求組員先理解 Comparator。
+- 先不引入 Comparator，讓組員分階段理解。
 - 讓答辯程式碼更短、更直觀。
 
-未來若真的需要排序自訂物件，再擴充泛型與 Comparator 版本即可。
+但 `int[]` 無法依課程名稱排序 Enrollment，因此另外提供 `List<T> + Comparator` overload。兩個版本使用相同的
+Divide、Merge 流程；泛型版只把 `<=` 的大小判斷改為 `comparator.compare(left, right) <= 0`。
 
 ---
 
@@ -82,6 +92,8 @@ public final class MergeSort {
 
 ```java
 int[] sorted = MergeSort.sort(values);
+
+List<Enrollment> sortedEnrollments = MergeSort.sort(enrollments, comparator);
 ```
 
 ---
@@ -91,8 +103,22 @@ int[] sorted = MergeSort.sort(values);
 | 方法 | 用途 | 回傳值 | 可能例外 | 複雜度 |
 |---|---|---|---|---:|
 | `sort(int[] values)` | 將整數由小到大排序 | 新的已排序陣列 | values 為 null 時 `NullPointerException` | `O(n log n)` |
+| `sort(List<T>, Comparator)` | 依自訂規則排序物件 | 新的已排序清單 | values 或 comparator 為 null 時 `NullPointerException` | `O(n log n)` |
 
 空陣列回傳空陣列；單一元素陣列回傳內容相同的新陣列。
+
+泛型版的 Comparator 由應用層提供。例如 Enrollment 使用：
+
+```java
+Comparator<Enrollment> enrollmentOrder = Comparator
+        .comparing(
+                enrollment -> enrollment.getCourse().getName(),
+                String.CASE_INSENSITIVE_ORDER
+        )
+        .thenComparing(Enrollment::getId);
+```
+
+MergeSort 不需要知道 Enrollment、Course 或 direction，仍保持為獨立演算法。
 
 ---
 
@@ -486,17 +512,27 @@ input 在 sort 前後都保持 [5, 3, 8, 1]
 sort(null) → NullPointerException
 ```
 
+### 泛型物件與 Stable Sort
+
+```text
+[Java#1, Algorithm#2, Java#3]
+→ [Algorithm#2, Java#1, Java#3]
+```
+
+兩筆 Java 的原始相對順序維持 `#1`、`#3`。
+
 ---
 
 ## 19. MVP 取捨與限制
 
-- 目前只排序 `int[]`，不提供泛型 Comparator 版本。
-- 排序方向固定為由小到大。
+- `int[]` 版本固定由小到大；泛型版本的方向由 Comparator 決定。
 - 為保護呼叫端資料，會建立輸入副本。
 - 共用單一 temporary 陣列，避免每次 merge 重複配置。
 - 使用遞迴實作，讓 Divide and Conquer 結構清楚。
 - 不是 in-place sort，需要 O(n) 額外空間。
-- 實際資料庫分頁排序仍交給 SQL／Repository，不會把所有資料載入 Java 後再使用 Merge Sort。
+- Enrollment 未指定 courseName 排序時仍交給資料庫分頁。
+- 指定 `sort=courseName` 時會將完整條件結果載入記憶體、Merge Sort 後再分頁；這適合目前約 1000 筆的
+  MVP 與課程展示，不適合直接套用到大型正式資料集。
 
 ---
 
@@ -526,9 +562,10 @@ sort(null) → NullPointerException
 
 避免方法產生不明顯的 side effect。呼叫端可以同時保留原始資料與排序結果，測試也更容易。
 
-### Q7：為什麼不是泛型版本？
+### Q7：為什麼需要泛型版本？
 
-目前需求只展示數字排序，int[] 版本最容易理解。實際 Entity 排序已由資料庫處理；沒有真實需求時不增加 Comparator 與泛型陣列複雜度。
+`int[]` 最容易展示 Merge Sort，但無法排序 Enrollment。泛型版本把欄位順序交給 Comparator，因此同一套
+演算法可以依課程名稱排序，也能保留容易理解的整數版供答辯。
 
 ### Q8：Merge Sort 與 Bubble Sort 相比有什麼優點？
 
@@ -538,12 +575,16 @@ Merge Sort 最壞仍是 O(n log n)；Bubble Sort 一般最壞是 O(n²)，資料
 
 需要 O(n) 額外空間，且此版本即使資料已排序也仍會執行完整分割與合併。
 
-### Q10：為什麼 API 查詢排序不用這個 Merge Sort？
+### Q10：API 如何使用這個 Merge Sort？
 
-因為分頁前排序必須在完整資料集上進行。交給資料庫排序後再分頁更正確且有效率；Merge Sort 是課程要求的獨立演算法展示。
+只有指定 `sort=courseName` 時使用：Repository 先取得完整條件結果，Merge Sort 排序後，Service 才切出
+指定頁面。未指定 sort 時仍使用資料庫分頁，避免所有查詢都載入完整資料。
 
 ---
 
 ## 21. 最短口頭說明版本
 
-> Merge Sort 使用 Divide and Conquer，先把陣列不斷分成左右兩半，直到每段只剩一個元素，再用兩個指標將已排序的左右區間合併。共有 log n 層，每層處理 n 個元素，所以時間複雜度是 O(n log n)，額外空間是 O(n)。
+> Merge Sort 使用 Divide and Conquer，先把資料不斷分成左右兩半，直到每段只剩一個元素，再將已排序的
+> 左右區間合併。共有 log n 層，每層處理 n 個元素，所以時間複雜度是 O(n log n)，額外空間是 O(n)。
+> 本專案保留容易展示的 int[] 版本，並用泛型 Comparator 版本實際完成 Enrollment 課程名稱排序；排序完整
+> 結果後才切頁，確保跨頁順序正確。
