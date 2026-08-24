@@ -33,10 +33,27 @@ class CustomHashTableTest {
         }
     }
 
+    @Test
+    void supportsKeysWithNegativeHashCodes() {
+        CustomHashTable<NegativeHashKey, String> table = new CustomHashTable<>();
+        NegativeHashKey key = new NegativeHashKey("course-1");
+
+        table.put(key, "Java Basic");
+
+        assertThat(table.get(key)).isEqualTo("Java Basic");
+    }
+
     private record CollisionKey(int id) {
         @Override
         public int hashCode() {
             return 7;
+        }
+    }
+
+    private record NegativeHashKey(String value) {
+        @Override
+        public int hashCode() {
+            return -7;
         }
     }
 }

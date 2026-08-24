@@ -12,7 +12,7 @@ class MaxHeapTest {
 
     @Test
     void returnsValuesFromHighestToLowestPriority() {
-        MaxHeap<Integer> heap = new MaxHeap<>(Comparator.naturalOrder(), 2);
+        MaxHeap<Integer> heap = new MaxHeap<>(Comparator.naturalOrder());
         heap.insert(1);
         heap.insert(3);
         heap.insert(2);

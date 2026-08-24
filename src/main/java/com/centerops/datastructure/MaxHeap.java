@@ -4,115 +4,135 @@ import java.util.Comparator;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 
-/** Array-backed max heap that does not delegate storage to a collection. */
+/**
+ * 使用陣列保存 Complete Binary Tree 的泛型最大堆積（Max Heap）
+ *
+ * <p>元素大小由呼叫端提供的 {@link Comparator} 決定。此類別只負責排列元素，
+ * 不包含 Alert priority 等業務判斷規則</p>
+ *
+ * @param <T> Heap 中保存的元素型別
+ */
 public final class MaxHeap<T> {
 
-    private static final int DEFAULT_CAPACITY = 10;
-
     private final Comparator<? super T> comparator;
-    private Object[] elements;
+    private Object[] elements = new Object[10];
     private int size;
 
+    /**
+     * 使用指定的比較規則建立空的 Max Heap
+     *
+     * @param comparator 判斷元素大小的比較器，不可為 {@code null}
+     * @throws NullPointerException 當 comparator 為 {@code null}
+     */
     public MaxHeap(Comparator<? super T> comparator) {
-        this(comparator, DEFAULT_CAPACITY);
-    }
-
-    public MaxHeap(Comparator<? super T> comparator, int initialCapacity) {
         this.comparator = Objects.requireNonNull(comparator, "comparator must not be null");
-        if (initialCapacity <= 0) {
-            throw new IllegalArgumentException("initialCapacity must be greater than zero");
-        }
-        elements = new Object[initialCapacity];
     }
 
+    /**
+     * 插入一個元素，並透過向上交換恢復 Max Heap Property
+     *
+     * @param value 要插入的元素，不可為 {@code null}
+     * @throws NullPointerException 當 value 為 {@code null}
+     */
     public void insert(T value) {
         Objects.requireNonNull(value, "value must not be null");
-        ensureCapacity();
+        if (size == elements.length) {
+            Object[] larger = new Object[elements.length * 2];
+            System.arraycopy(elements, 0, larger, 0, elements.length);
+            elements = larger;
+        }
+
         elements[size] = value;
-        siftUp(size);
+        moveUp(size);
         size++;
     }
 
+    /**
+     * 查看目前最大的元素，但不將它移除
+     *
+     * @return Comparator 判定的最大元素
+     * @throws NoSuchElementException 當 Heap 為空
+     */
     public T peek() {
-        ensureNotEmpty();
-        return elementAt(0);
+        checkNotEmpty();
+        return valueAt(0);
     }
 
+    /**
+     * 移除並回傳目前最大的元素，接著透過向下交換恢復 Max Heap Property
+     *
+     * @return 被移除的最大元素
+     * @throws NoSuchElementException 當 Heap 為空
+     */
     public T remove() {
-        ensureNotEmpty();
-        T maximum = elementAt(0);
+        checkNotEmpty();
+        T maximum = valueAt(0);
         size--;
         elements[0] = elements[size];
         elements[size] = null;
-        if (size > 0) {
-            siftDown(0);
-        }
+        moveDown(0);
         return maximum;
     }
 
+    /**
+     * 取得 Heap 中目前保存的元素數量
+     *
+     * @return 元素數量
+     */
     public int size() {
         return size;
     }
 
+    /**
+     * 判斷 Heap 是否沒有任何元素
+     *
+     * @return Heap 為空時回傳 {@code true}，否則回傳 {@code false}
+     */
     public boolean isEmpty() {
         return size == 0;
     }
 
-    private void siftUp(int index) {
-        int current = index;
-        while (current > 0) {
-            int parent = (current - 1) / 2;
-            if (comparator.compare(elementAt(current), elementAt(parent)) <= 0) {
+    private void moveUp(int index) {
+        while (index > 0) {
+            int parent = (index - 1) / 2;
+            if (comparator.compare(valueAt(index), valueAt(parent)) <= 0) {
                 return;
             }
-            swap(current, parent);
-            current = parent;
+            swap(index, parent);
+            index = parent;
         }
     }
 
-    private void siftDown(int index) {
-        int current = index;
-        while (true) {
-            int left = current * 2 + 1;
-            if (left >= size) {
-                return;
-            }
+    private void moveDown(int index) {
+        while (index * 2 + 1 < size) {
+            int left = index * 2 + 1;
             int right = left + 1;
-            int largest = right < size
-                    && comparator.compare(elementAt(right), elementAt(left)) > 0
-                    ? right
-                    : left;
-            if (comparator.compare(elementAt(largest), elementAt(current)) <= 0) {
+            int largerChild = right < size
+                    && comparator.compare(valueAt(right), valueAt(left)) > 0
+                    ? right : left;
+
+            if (comparator.compare(valueAt(largerChild), valueAt(index)) <= 0) {
                 return;
             }
-            swap(current, largest);
-            current = largest;
+            swap(index, largerChild);
+            index = largerChild;
         }
     }
 
-    private void ensureCapacity() {
-        if (size < elements.length) {
-            return;
-        }
-        Object[] expanded = new Object[elements.length << 1];
-        System.arraycopy(elements, 0, expanded, 0, elements.length);
-        elements = expanded;
-    }
-
-    private void ensureNotEmpty() {
+    private void checkNotEmpty() {
         if (isEmpty()) {
             throw new NoSuchElementException("Heap is empty");
         }
     }
 
     @SuppressWarnings("unchecked")
-    private T elementAt(int index) {
+    private T valueAt(int index) {
         return (T) elements[index];
     }
 
     private void swap(int first, int second) {
-        Object value = elements[first];
+        Object temporary = elements[first];
         elements[first] = elements[second];
-        elements[second] = value;
+        elements[second] = temporary;
     }
 }
