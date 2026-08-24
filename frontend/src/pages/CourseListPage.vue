@@ -322,6 +322,9 @@ async function handleSavePrerequisites() {
 
     <!-- 設定先修課程：勾選式多選 -->
     <AppModal v-if="isPrereqModalOpen" :title="`設定建議先修課程：${targetCourse?.name}`" @close="closePrereqModal">
+      <p class="algorithm-note">
+        系統使用自訂 CourseGraph 與深度優先搜尋（DFS），排除會形成循環依賴（Cycle）的候選課程；儲存前仍會由後端再次驗證。
+      </p>
       <fieldset class="prereq-fieldset">
         <legend>勾選建議先修課程（可複選）</legend>
 

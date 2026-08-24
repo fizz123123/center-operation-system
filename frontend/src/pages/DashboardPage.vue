@@ -7,6 +7,7 @@ import Badge from '../components/common/Badge.vue'
 import Icon from '../components/common/Icon.vue'
 import { getDashboardSummary } from '../api/dashboard.js'
 import { alertPriorityMeta } from '../utils/statusMeta.js'
+import { toDisplayAlertMessage } from '../utils/alertMessage.js'
 import { useToastStore } from '../stores/toast.js'
 import { useAlertsStore } from '../stores/alerts.js'
 import { extractErrorMessage } from '../utils/errorMessage.js'
@@ -103,11 +104,19 @@ function dashOffset(percent) {
           <h2>優先警示（MaxHeap 排序）</h2>
           <RouterLink v-if="alertsTotalCount > 0" to="/alerts" class="view-all-link">查看全部</RouterLink>
         </div>
+        <p class="algorithm-note">
+          警示等級由修課狀態與經過天數判定；自訂最大堆積（MaxHeap）負責讓高優先權警示先顯示，此處預覽前四筆。
+        </p>
 
         <ul v-if="!loadingAlerts && previewAlerts.length > 0" class="alert-list">
           <li v-for="alert in previewAlerts" :key="alert.id" class="alert-item">
             <Badge :color="alertPriorityMeta(alert.priority).color" :label="`${alertPriorityMeta(alert.priority).label}優先權`" :icon="alertPriorityMeta(alert.priority).icon" />
-            <span class="alert-message">{{ alert.message }}</span>
+            <div class="alert-content">
+              <span class="alert-context">
+                {{ alert.personName || '未知人員' }} · {{ alert.courseName || '未指定課程' }}
+              </span>
+              <span class="alert-message">{{ toDisplayAlertMessage(alert.message) }}</span>
+            </div>
           </li>
         </ul>
 
@@ -206,7 +215,9 @@ function dashOffset(percent) {
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
 }
-.alert-message { font-size: var(--font-size-sm); }
+.alert-content { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 2px; }
+.alert-context { font-size: var(--font-size-sm); font-weight: 600; color: var(--color-text-primary); }
+.alert-message { font-size: var(--font-size-xs); color: var(--color-text-muted); }
 
 .alert-skeleton { display: flex; flex-direction: column; gap: var(--space-3); }
 .alert-skeleton span {

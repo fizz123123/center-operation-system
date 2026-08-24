@@ -6,6 +6,7 @@ import FilterDropdown from '../components/common/FilterDropdown.vue'
 import Pagination from '../components/common/Pagination.vue'
 import { getAlerts } from '../api/alert.js'
 import { alertPriorityMeta } from '../utils/statusMeta.js'
+import { toDisplayAlertMessage } from '../utils/alertMessage.js'
 import { useToastStore } from '../stores/toast.js'
 import { extractErrorMessage } from '../utils/errorMessage.js'
 
@@ -85,7 +86,12 @@ onMounted(loadAlerts)
             :label="`${alertPriorityMeta(alert.priority).label}優先權`"
             :icon="alertPriorityMeta(alert.priority).icon"
           />
-          <span class="alert-message">{{ alert.message }}</span>
+          <div class="alert-content">
+            <span class="alert-context">
+              {{ alert.personName || '未知人員' }} · {{ alert.courseName || '未指定課程' }}
+            </span>
+            <span class="alert-message">{{ toDisplayAlertMessage(alert.message) }}</span>
+          </div>
         </li>
       </ul>
       <Pagination :page="page" :page-size="PAGE_SIZE" :total-items="totalItems" @update:page="handlePageChange" />
@@ -126,7 +132,9 @@ onMounted(loadAlerts)
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
 }
-.alert-message { flex: 1; font-size: var(--font-size-sm); }
+.alert-content { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 2px; }
+.alert-context { font-size: var(--font-size-sm); font-weight: 600; color: var(--color-text-primary); }
+.alert-message { font-size: var(--font-size-sm); color: var(--color-text-muted); }
 
 .alert-skeleton {
   display: flex;

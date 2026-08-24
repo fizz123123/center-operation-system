@@ -38,3 +38,8 @@ export function getPersonStatistics() {
 export function getPersonEnrollments(personId, params = {}) {
   return callApi(() => http.get(`/people/${personId}/enrollments`, { params }))
 }
+
+// GET /api/people/{personId}/available-courses －查詢已完成所有先修且尚未註冊的課程
+export function getAvailableCourses(personId) {
+  return callApi(() => http.get(`/people/${personId}/available-courses`))
+}

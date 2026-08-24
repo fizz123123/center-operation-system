@@ -28,6 +28,14 @@ h1, h2, h3, h4 {
 
 p { margin: 0 0 var(--space-3) 0; }
 
+/* ---- 演算法展示說明：以一般輔助文字呈現，不使用額外色塊或邊框 ---- */
+.algorithm-note {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
 ul, ol { margin: 0; padding: 0; list-style: none; }       /* 選單/清單元件會各自決定要不要項目符號 */
 
 a {

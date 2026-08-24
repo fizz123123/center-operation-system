@@ -12,13 +12,13 @@ import { extractErrorMessage } from '../utils/errorMessage.js'
 // 1. 「選課程看關係」：選一門課，只顯示跟它「直接」相關的先修／後續課程——
 //    資料直接讀 course.prerequisiteIds 這個欄位（來自 GET /api/courses），純粹是欄位查詢，
 //    不做遞迴、不走訪整張圖，所以不算「前端實作圖演算法」。
-// 2. 「一組可行的建議修課順序」：後端用 CourseGraph 做拓樸排序（Topological Sort）後的完整建議修課順序，
-//    對應 GET /api/courses/learning-path，前端只負責顯示陣列，排序邏輯完全在後端／資料結構模組。
+// 2. 「建議學習階段」：後端用 CourseGraph 與拓樸排序（Topological Sort）將同一輪可修的課程分組，
+//    對應 GET /api/courses/learning-path，前端只負責顯示 stages，排序邏輯完全在後端／資料結構模組。
 const toast = useToastStore()
 
 const learningPathNodes = ref([]) // 儲存 learning-path API 返回的 nodes
 const learningPathEdges = ref([]) // 儲存 learning-path API 返回的 edges
-const topologicalOrder = ref([])  // 儲存 learning-path API 返回的 topologicalOrder
+const topologicalStages = ref([]) // 儲存可平行學習的拓樸階段
 const loadingPath = ref(true)
 
 const courses = ref([]) // 儲存 getCourseOptions 返回的課程列表
@@ -31,7 +31,11 @@ async function loadPath() {
     const result = await getLearningPath()
     learningPathNodes.value = result.nodes
     learningPathEdges.value = result.edges
-    topologicalOrder.value = result.topologicalOrder
+    topologicalStages.value = result.stages?.length
+      ? result.stages
+      : result.topologicalOrder?.length
+        ? [result.topologicalOrder]
+        : []
   } catch (error) {
     toast.error(extractErrorMessage(error, '讀取學習路徑失敗'))
   } finally {
@@ -74,20 +78,26 @@ const directFollowUps = computed(() => {
   return courses.value.filter((c) => c.prerequisiteIds?.includes(selectedCourse.value.id))
 })
 
-// 將 topologicalOrder 中的課程 ID 轉換為課程名稱
-const orderedCourseNames = computed(() => {
-  return topologicalOrder.value.map(id => {
-    const course = learningPathNodes.value.find(node => node.id === id);
-    return course ? `${course.code} - ${course.name}` : `#${id}`;
-  });
-});
+// 將每一階段的課程 ID 轉換為畫面需要的課程資料
+const learningStages = computed(() => {
+  return topologicalStages.value.map((courseIds, index) => ({
+    number: index + 1,
+    courses: courseIds.map((id) => {
+      const course = learningPathNodes.value.find((node) => node.id === id)
+      return course ?? { id, code: `#${id}`, name: '未知課程' }
+    }),
+  }))
+})
 </script>
 
 <template>
   <div class="page">
     <!-- 第一段：選課程看「直接」關係 -->
     <section class="panel">
-      <h2>選課程看先修關係</h2>
+      <h2>課程先修關係（有向圖）</h2>
+      <p class="algorithm-note">
+        系統以課程作為節點、先修關係作為有方向的連線；選擇課程後，可查看與它直接相連的先修與後續課程。
+      </p>
       <FormField id="course-relation-select" label="選擇課程" v-slot="{ describedBy }">
         <select id="course-relation-select" v-model="selectedCourseId" :aria-describedby="describedBy" :disabled="loadingCourses">
           <option value="">請選擇課程</option>
@@ -121,37 +131,42 @@ const orderedCourseNames = computed(() => {
       </div>
     </section>
 
-    <!-- 第二段：一組可行的建議修課順序 -->
+    <!-- 第二段：依拓樸排序輪次呈現可平行學習的階段 -->
     <section class="panel">
-      <h2>一組可行的建議修課順序</h2>
+      <h2>建議學習階段（拓撲排序）</h2>
+      <p class="algorithm-note">
+        系統依據先修關係將課程分成多個階段；同一階段可平行學習，後續階段則需先完成必要的先修課程。
+      </p>
 
       <div v-if="loadingPath" class="path-skeleton" aria-hidden="true">
         <span v-for="n in 4" :key="n"></span>
       </div>
 
-      <div v-else-if="topologicalOrder.length === 0" class="empty-state">
+      <div v-else-if="learningStages.length === 0" class="empty-state">
         <Icon name="route" :size="24" />
         <p>目前還沒有課程資料，無法產生學習路徑。</p>
       </div>
 
-      <!-- role="list" 讓這條「視覺上是流程圖、語意上是有序清單」的內容，對螢幕閱讀器來說仍然是一份清單 -->
-      <ol v-else class="path-flow" aria-label="一組可行的建議修課順序">
-        <li v-for="(courseName, index) in orderedCourseNames" :key="index" class="path-step">
-          <div class="path-node">
-            <span class="path-index">{{ index + 1 }}</span>
-            <span class="path-name">{{ courseName }}</span>
+      <div v-else class="stage-list" aria-label="依先修關係分組的建議學習階段">
+        <section v-for="stage in learningStages" :key="stage.number" class="learning-stage">
+          <div class="stage-heading">
+            <h3>階段 {{ stage.number }}</h3>
+            <span>同一階段可平行學習</span>
           </div>
-          <!-- 移除暗示直接先修關係的箭頭 -->
-        </li>
-      </ol>
+          <ul class="stage-courses">
+            <li v-for="course in stage.courses" :key="course.id" class="stage-course">
+              <span class="course-code">{{ course.code }}</span>
+              <span class="course-name">{{ course.name }}</span>
+            </li>
+          </ul>
+        </section>
+      </div>
     </section>
   </div>
 </template>
 
 <style scoped>
 .page { display: flex; flex-direction: column; gap: var(--space-5); }
-.page-desc { margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-sm); max-width: 68ch; }
-
 .panel {
   background: var(--color-bg-surface);
   border-radius: var(--radius-lg);
@@ -190,55 +205,49 @@ const orderedCourseNames = computed(() => {
   font-weight: 600;
 }
 
-.path-flow {
+.stage-list {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
+  gap: var(--space-5);
 }
 
-.path-step {
+.learning-stage {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  width: 100%;
-}
-
-.path-node {
-  display: flex;
-  align-items: center;
   gap: var(--space-3);
-  width: 100%;
-  max-width: 420px;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  background: var(--color-brand-100);
-  border: 1px solid var(--color-border);
 }
 
-.path-index {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--color-brand-600);
-  color: var(--color-text-inverse);
+.stage-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.stage-heading h3 {
+  margin: 0;
+  font-size: var(--font-size-base);
+}
+.stage-heading span {
+  color: var(--color-text-muted);
   font-size: var(--font-size-xs);
-  font-weight: 700;
 }
 
-.path-name {
-  font-weight: 600;
-  color: var(--color-text-primary);
+.stage-courses {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+  gap: var(--space-2);
 }
-
-/* 移除 path-arrow 的樣式，因為已經移除了箭頭元素 */
-/* .path-arrow {
-  color: var(--color-brand-400);
-  margin: 2px 0;
-} */
+.stage-course {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 88px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+}
+.course-code { color: var(--color-text-muted); font-size: var(--font-size-xs); font-weight: 600; }
+.course-name { color: var(--color-text-primary); font-weight: 600; }
 
 .path-skeleton {
   display: flex;

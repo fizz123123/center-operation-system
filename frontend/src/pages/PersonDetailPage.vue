@@ -7,8 +7,7 @@ import AppModal from '../components/common/AppModal.vue'
 import FormField from '../components/common/FormField.vue'
 import Badge from '../components/common/Badge.vue'
 import Icon from '../components/common/Icon.vue'
-import { getPerson, updatePerson, getPersonEnrollments } from '../api/person.js'
-import { getCourses } from '../api/course.js'
+import { getPerson, updatePerson, getPersonEnrollments, getAvailableCourses } from '../api/person.js'
 import { createEnrollment, updateEnrollmentStatus } from '../api/enrollment.js'
 import { personStatusMeta, PERSON_STATUS_OPTIONS, enrollmentStatusMeta, ENROLLMENT_STATUS_OPTIONS } from '../utils/statusMeta.js'
 import { useToastStore } from '../stores/toast.js'
@@ -27,9 +26,6 @@ const personId = computed(() => route.params.id)
 const person = ref(null)
 const loadingPerson = ref(true)
 
-const ALL_SIZE = 500                                             // 「查全部、不分頁」用的緩衝 size，涵蓋預期的最大筆數
-const courses = ref([])                                          // 全部課程，給「註冊新課程」下拉選單用
-
 const PAGE_SIZE = 10
 const enrollments = ref([])                                      // 目前這一頁的學習紀錄，給表格顯示用
 const loadingEnrollments = ref(true)
@@ -37,10 +33,6 @@ const totalEnrollments = ref(0)
 const page = ref(1)
 const sortBy = ref('')
 const sortDir = ref('asc')
-
-// 這個人「全部」已註冊的課程 id（不只是目前這一頁）——「註冊新課程」的下拉選單要用這個排除已經修過的課程，
-// 不能只看 enrollments（分頁後只剩目前這一頁），不然分頁到別頁的課程會被誤判成「還沒修過」而重複出現在下拉選單裡
-const enrolledCourseIds = ref(new Set())
 
 const ENROLLMENT_COLUMNS = [
   { key: 'courseName', label: '課程名稱', sortable: true, width: '55%' },
@@ -62,26 +54,23 @@ async function loadPerson() {
 async function loadEnrollments() {
   loadingEnrollments.value = true
   try {
-    const result = await getPersonEnrollments(personId.value, {
+    const params = {
       page: page.value - 1,
       size: PAGE_SIZE,
-      sort: sortBy.value ? `${sortBy.value},${sortDir.value}` : '',
-    })
+    }
+
+    if (sortBy.value) {
+      params.sort = sortBy.value
+      params.direction = sortDir.value
+    }
+
+    const result = await getPersonEnrollments(personId.value, params)
     enrollments.value = result.content
     totalEnrollments.value = result.totalElements
   } catch (error) {
     toast.error(extractErrorMessage(error, '讀取學習紀錄失敗'))
   } finally {
     loadingEnrollments.value = false
-  }
-}
-
-async function loadEnrolledCourseIds() {
-  try {
-    const result = await getPersonEnrollments(personId.value, { page: 0, size: ALL_SIZE })
-    enrolledCourseIds.value = new Set(result.content.map((e) => e.courseId))
-  } catch (error) {
-    toast.error(extractErrorMessage(error, '讀取學習紀錄失敗'))
   }
 }
 
@@ -97,17 +86,9 @@ function handlePageChange(newPage) {
   loadEnrollments()
 }
 
-async function loadCourses() {
-  // 「全部課程」給下拉選單用，跟 CourseListPage.vue 的 allCourses 是同一種需求：size 給大一點，一次抓回來
-  const result = await getCourses({ page: 0, size: ALL_SIZE })
-  courses.value = result.content
-}
-
 onMounted(() => {
   loadPerson()
   loadEnrollments()
-  loadEnrolledCourseIds()
-  loadCourses()
 })
 
 // 路由參數變了（例如從這個人的詳情頁直接跳到另一個人，網址列 id 換了但元件沒重建）就重新載入，
@@ -116,7 +97,6 @@ watch(personId, () => {
   page.value = 1
   loadPerson()
   loadEnrollments()
-  loadEnrolledCourseIds()
 })
 
 // =====================================================================
@@ -158,15 +138,25 @@ async function handleEditSubmit() {
 // =====================================================================
 // 直接從詳情頁註冊新課程
 // =====================================================================
-const availableCourses = computed(() => courses.value.filter((c) => !enrolledCourseIds.value.has(c.id)))
+const availableCourses = ref([])
 
 const isEnrollModalOpen = ref(false)
 const selectedCourseId = ref('')
 const isEnrolling = ref(false)
+const loadingAvailableCourses = ref(false)
 
-function openEnrollModal() {
+async function openEnrollModal() {
   selectedCourseId.value = ''
+  availableCourses.value = []
   isEnrollModalOpen.value = true
+  loadingAvailableCourses.value = true
+  try {
+    availableCourses.value = await getAvailableCourses(personId.value)
+  } catch (error) {
+    toast.error(extractErrorMessage(error, '讀取可註冊課程失敗'))
+  } finally {
+    loadingAvailableCourses.value = false
+  }
 }
 function closeEnrollModal() {
   isEnrollModalOpen.value = false
@@ -181,7 +171,6 @@ async function handleEnroll() {
     closeEnrollModal()
     page.value = 1
     await loadEnrollments()
-    await loadEnrolledCourseIds()
   } catch (error) {
     toast.error(extractErrorMessage(error, '註冊課程失敗'))
   } finally {
@@ -250,6 +239,10 @@ async function handleStatusChange(enrollment, newStatus) {
           </AppButton>
         </div>
 
+        <p class="algorithm-note">
+          點選「課程名稱」欄位可切換升冪或降冪；後端使用自訂合併排序（Merge Sort）先排序完整結果，再進行分頁。
+        </p>
+
         <DataTable
           :columns="ENROLLMENT_COLUMNS"
           :rows="enrollments"
@@ -317,16 +310,16 @@ async function handleStatusChange(enrollment, newStatus) {
     <!-- 註冊新課程 -->
     <AppModal v-if="isEnrollModalOpen" title="註冊新課程" @close="closeEnrollModal">
       <FormField id="enroll-course" label="選擇課程" required v-slot="{ describedBy }">
-        <select id="enroll-course" v-model="selectedCourseId" :aria-describedby="describedBy">
-          <option value="" disabled>請選擇課程</option>
+        <select id="enroll-course" v-model="selectedCourseId" :aria-describedby="describedBy" :disabled="loadingAvailableCourses">
+          <option value="" disabled>{{ loadingAvailableCourses ? '載入中…' : '請選擇課程' }}</option>
           <option v-for="c in availableCourses" :key="c.id" :value="c.id">{{ c.code }} － {{ c.name }}</option>
         </select>
       </FormField>
-      <p v-if="availableCourses.length === 0" class="empty-note">這位學員已經註冊完所有課程了。</p>
+      <p v-if="!loadingAvailableCourses && availableCourses.length === 0" class="empty-note">目前沒有符合先修條件且尚未註冊的課程。</p>
 
       <div class="form-actions">
         <AppButton variant="secondary" type="button" @click="closeEnrollModal">取消</AppButton>
-        <AppButton variant="primary" :disabled="!selectedCourseId" :loading="isEnrolling" @click="handleEnroll">
+        <AppButton variant="primary" :disabled="loadingAvailableCourses || !selectedCourseId" :loading="isEnrolling" @click="handleEnroll">
           確認註冊
         </AppButton>
       </div>
@@ -411,6 +404,10 @@ async function handleStatusChange(enrollment, newStatus) {
   width: 100%;
 }
 
+.status-select-wrapper:hover {
+  z-index: 20;
+}
+
 .status-select {
   width: 100%;                                                 /* 填滿固定寬度的儲存格，不再依選到的文字長度自己撐寬/縮窄 */
   min-height: 36px;
@@ -428,7 +425,7 @@ async function handleStatusChange(enrollment, newStatus) {
 
 .status-tooltip {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
   background-color: var(--color-text-primary);

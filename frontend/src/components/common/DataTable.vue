@@ -83,7 +83,11 @@ function ariaSortFor(column) {
         </tr>
 
         <tr v-else v-for="row in rows" :key="row[rowKey]">
-          <td v-for="col in columns" :key="col.key" :class="{ numeric: col.numeric }">
+          <td
+            v-for="col in columns"
+            :key="col.key"
+            :class="[{ numeric: col.numeric }, `cell-${col.key}`]"
+          >
             <!-- 具名插槽 cell-<key>：需要客製化顯示內容（例如徽章、按鈕）時，呼叫端可以覆蓋預設純文字顯示 -->
             <slot :name="`cell-${col.key}`" :row="row">
               <span :class="{ num: col.numeric }">{{ row[col.key] }}</span>
@@ -168,6 +172,12 @@ tbody td.numeric { text-align: right; }
    看起來像是被上一列擋住。這個儲存格本來就沒有需要省略號收掉的長文字，
    所以只針對「有 tooltip 的儲存格」開放 overflow:visible，其他欄位的省略號效果不受影響。 */
 tbody td:has(.app-btn-tooltip) {
+  overflow: visible;
+}
+
+/* 操作欄可能包含下拉選單的狀態提示；允許提示跨出目前列，避免被下一列裁掉。 */
+tbody td.cell-actions {
+  position: relative;
   overflow: visible;
 }
 
